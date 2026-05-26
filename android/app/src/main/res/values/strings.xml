@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">PromoTracker</string>
+    <string name="title_activity_main">PromoTracker</string>
+    <string name="package_name">com.promotracker.app</string>
+    <string name="custom_url_scheme">com.promotracker.app</string>
+</resources>
