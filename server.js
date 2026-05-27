@@ -24,13 +24,14 @@ app.use(express.urlencoded({ extended: true }));
 const dbDir = path.join(__dirname, 'data');
 const dbPath = path.join(dbDir, 'promo_media.json');
 const usersPath = path.join(dbDir, 'users.json');
+const mediaTypesPath = path.join(dbDir, 'media_types.json');
 const uploadDir = path.join(__dirname, 'uploads');
 
 const defaultUsers = [
   {
     id: "user-admin",
     username: "admin",
-    password: "admin",
+    password: "media1234",
     name: "Administrator Pusat",
     role: "admin",
     assignedProvinceId: "",
@@ -62,6 +63,8 @@ const defaultUsers = [
   }
 ];
 
+const defaultMediaTypes = ['Banner', 'Pamflet', 'Sticker'];
+
 // Ensure directories and files exist
 const initializeFolders = async () => {
   try {
@@ -70,6 +73,9 @@ const initializeFolders = async () => {
     
     if (!existsSync(usersPath)) {
       await fs.writeFile(usersPath, JSON.stringify(defaultUsers, null, 2));
+    }
+    if (!existsSync(mediaTypesPath)) {
+      await fs.writeFile(mediaTypesPath, JSON.stringify(defaultMediaTypes, null, 2));
     }
   } catch (error) {
     console.error('Error creating initial folders:', error);
@@ -151,35 +157,107 @@ const writeUsers = async (data) => {
   }
 };
 
-// Allowed media types — anything else gets remapped to Banner
-const ALLOWED_MEDIA_TYPES = ['Banner', 'Pamflet', 'Sticker'];
+// Helper to read media types
+const readMediaTypes = async () => {
+  try {
+    if (!existsSync(mediaTypesPath)) {
+      await fs.writeFile(mediaTypesPath, JSON.stringify(defaultMediaTypes, null, 2));
+      return defaultMediaTypes;
+    }
+    const data = await fs.readFile(mediaTypesPath, 'utf8');
+    return JSON.parse(data);
+  } catch (error) {
+    console.error('Error reading media types:', error);
+    return defaultMediaTypes;
+  }
+};
 
-const normalizeMediaType = (type) =>
-  ALLOWED_MEDIA_TYPES.includes(type) ? type : 'Banner';
+// Helper to write media types
+const writeMediaTypes = async (data) => {
+  try {
+    await fs.writeFile(mediaTypesPath, JSON.stringify(data, null, 2));
+  } catch (error) {
+    console.error('Error writing media types:', error);
+  }
+};
+
+const normalizeMediaType = (type, allowedTypes) =>
+  allowedTypes.includes(type) ? type : 'Banner';
 
 // Normalize an existing DB record so all media type fields conform
-const normalizeItem = (item) => ({
+const normalizeItem = (item, allowedTypes) => ({
   ...item,
-  mediaType: normalizeMediaType(item.mediaType),
-  mediaType2: item.mediaType2 ? normalizeMediaType(item.mediaType2) : '',
+  mediaType: normalizeMediaType(item.mediaType, allowedTypes),
+  mediaType2: item.mediaType2 ? normalizeMediaType(item.mediaType2, allowedTypes) : '',
   mediaItems: Array.isArray(item.mediaItems)
-    ? item.mediaItems.map(m => ({ ...m, type: normalizeMediaType(m.type) }))
+    ? item.mediaItems.map(m => ({ ...m, type: normalizeMediaType(m.type, allowedTypes) }))
     : []
 });
 
 // --- API ENDPOINTS ---
 
+// 0. Media Types Management
+app.get('/api/media-types', async (req, res) => {
+  try {
+    const types = await readMediaTypes();
+    res.json(types);
+  } catch (error) {
+    res.status(500).json({ message: 'Gagal mengambil data tipe media: ' + error.message });
+  }
+});
+
+app.post('/api/media-types', async (req, res) => {
+  try {
+    const { name } = req.body;
+    if (!name || !name.trim()) {
+      return res.status(400).json({ message: 'Nama tipe media wajib diisi!' });
+    }
+    const cleanName = name.trim();
+    const types = await readMediaTypes();
+    const exists = types.some(t => t.toLowerCase() === cleanName.toLowerCase());
+    if (exists) {
+      return res.status(400).json({ message: 'Tipe media ini sudah ada!' });
+    }
+    types.push(cleanName);
+    await writeMediaTypes(types);
+    res.status(201).json({ message: 'Tipe media berhasil ditambahkan!', data: types });
+  } catch (error) {
+    res.status(500).json({ message: 'Gagal menambah tipe media: ' + error.message });
+  }
+});
+
+app.delete('/api/media-types/:name', async (req, res) => {
+  try {
+    const typeName = decodeURIComponent(req.params.name);
+    const defaultTypes = ['Banner', 'Pamflet', 'Sticker'];
+    if (defaultTypes.includes(typeName)) {
+      return res.status(400).json({ message: 'Tipe media bawaan tidak boleh dihapus!' });
+    }
+    const types = await readMediaTypes();
+    const filtered = types.filter(t => t !== typeName);
+    if (filtered.length === types.length) {
+      return res.status(404).json({ message: 'Tipe media tidak ditemukan!' });
+    }
+    await writeMediaTypes(filtered);
+    res.json({ message: 'Tipe media berhasil dihapus!', data: filtered });
+  } catch (error) {
+    res.status(500).json({ message: 'Gagal menghapus tipe media: ' + error.message });
+  }
+});
+
 // 1. Get all promo media entries (with region filtering)
 app.get('/api/promo-media', async (req, res) => {
   const { regency } = req.query;
   let data = await readDB();
+  const allowedTypes = await readMediaTypes();
 
   // Normalize any legacy/invalid media types to Banner
-  data = data.map(normalizeItem);
+  data = data.map(item => normalizeItem(item, allowedTypes));
 
   // If user is a restricted officer, only show their regency
   if (regency && regency !== 'Semua' && regency !== 'All') {
-    data = data.filter(item => item.regency && item.regency.toUpperCase() === regency.toUpperCase());
+    const regencies = regency.split(',').map(r => r.trim().toUpperCase());
+    data = data.filter(item => item.regency && regencies.includes(item.regency.toUpperCase()));
   }
 
   // Sort by newest first
@@ -197,6 +275,7 @@ app.post('/api/promo-media', upload.single('photo'), async (req, res) => {
       mediaType,
       condition,
       installationDate,
+      installationTime,
       expiryDate,
       latitude,
       longitude,
@@ -242,10 +321,11 @@ app.post('/api/promo-media', upload.single('photo'), async (req, res) => {
       parsedMediaItems = [];
     }
     // Normalize all incoming media types
-    parsedMediaItems = parsedMediaItems.map(m => ({ ...m, type: normalizeMediaType(m.type) }));
+    const allowedTypesForPost = await readMediaTypes();
+    parsedMediaItems = parsedMediaItems.map(m => ({ ...m, type: normalizeMediaType(m.type, allowedTypesForPost) }));
 
-    const safeMediaType = normalizeMediaType(mediaType);
-    const safeMediaType2 = mediaType2 ? normalizeMediaType(mediaType2) : '';
+    const safeMediaType = normalizeMediaType(mediaType, allowedTypesForPost);
+    const safeMediaType2 = mediaType2 ? normalizeMediaType(mediaType2, allowedTypesForPost) : '';
     const newPromo = {
       id: `promo-${uuidv4().substring(0, 8)}`,
       outletName,
@@ -266,6 +346,7 @@ app.post('/api/promo-media', upload.single('photo'), async (req, res) => {
       mediaItems: parsedMediaItems,
       condition,
       installationDate: installationDate || new Date().toISOString().split('T')[0],
+      installationTime: installationTime || '',
       expiryDate: expiryDate || '',
       latitude: latitude ? parseFloat(latitude) : null,
       longitude: longitude ? parseFloat(longitude) : null,
@@ -390,14 +471,20 @@ app.delete('/api/promo-media/:id', async (req, res) => {
 app.get('/api/stats', async (req, res) => {
   const { regency } = req.query;
   let data = await readDB();
+  const allowedTypes = await readMediaTypes();
 
   // If user is restricted officer, only count their regency
   if (regency && regency !== 'Semua' && regency !== 'All') {
-    data = data.filter(item => item.regency && item.regency.toUpperCase() === regency.toUpperCase());
+    const regencies = regency.split(',').map(r => r.trim().toUpperCase());
+    data = data.filter(item => item.regency && regencies.includes(item.regency.toUpperCase()));
   }
 
   const now = new Date();
   
+  // Build mediaTypes map dynamically from the list
+  const mediaTypesMap = {};
+  allowedTypes.forEach(t => { mediaTypesMap[t] = 0; });
+
   const stats = {
     totalMedia: 0,
     totalOutlets: new Set(data.map(item => item.outletName)).size,
@@ -407,11 +494,7 @@ app.get('/api/stats', async (req, res) => {
       'Needs Replacement': 0,
       Missing: 0
     },
-    mediaTypes: {
-      Banner: 0,
-      Pamflet: 0,
-      Sticker: 0
-    },
+    mediaTypes: mediaTypesMap,
     expiringSoon: 0,
     expired: 0
   };
@@ -539,6 +622,48 @@ app.post('/api/users', async (req, res) => {
     res.status(201).json({ message: 'Petugas baru berhasil didaftarkan!', data: userInfo });
   } catch (error) {
     res.status(500).json({ message: 'Gagal membuat petugas: ' + error.message });
+  }
+});
+
+// Update user details (admin only)
+app.put('/api/users/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { username, password, name, assignedProvinceId, assignedProvinceName, assignedRegencyId, assignedRegencyName } = req.body;
+    
+    if (id === 'user-admin') {
+      return res.status(400).json({ message: 'Akun Administrator utama tidak boleh diedit!' });
+    }
+
+    const users = await readUsers();
+    const index = users.findIndex(u => u.id === id);
+
+    if (index === -1) {
+      return res.status(404).json({ message: 'User tidak ditemukan!' });
+    }
+
+    if (username) {
+      const exists = users.some(u => u.id !== id && u.username.toLowerCase() === username.toLowerCase());
+      if (exists) {
+        return res.status(400).json({ message: 'Username sudah terdaftar!' });
+      }
+      users[index].username = username;
+    }
+
+    if (name) users[index].name = name;
+    if (password && password.trim() !== '') users[index].password = password;
+
+    if (assignedProvinceId !== undefined) users[index].assignedProvinceId = assignedProvinceId;
+    if (assignedProvinceName !== undefined) users[index].assignedProvinceName = assignedProvinceName;
+    if (assignedRegencyId !== undefined) users[index].assignedRegencyId = assignedRegencyId;
+    if (assignedRegencyName !== undefined) users[index].assignedRegencyName = assignedRegencyName;
+
+    await writeUsers(users);
+
+    const { password: _, ...userInfo } = users[index];
+    res.json({ message: 'Data petugas berhasil diperbarui!', data: userInfo });
+  } catch (error) {
+    res.status(500).json({ message: 'Gagal memperbarui petugas: ' + error.message });
   }
 });
 

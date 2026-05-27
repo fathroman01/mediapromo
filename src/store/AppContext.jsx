@@ -12,7 +12,14 @@ export function AppProvider({ children }) {
     const saved = localStorage.getItem('promo_user');
     return saved ? JSON.parse(saved) : null;
   });
-  const [activeTab, setActiveTab] = useState('dashboard');
+  const [activeTab, setActiveTab] = useState(() => {
+    return localStorage.getItem('activeTab') || 'dashboard';
+  });
+
+  useEffect(() => {
+    localStorage.setItem('activeTab', activeTab);
+  }, [activeTab]);
+
   const [items, setItems] = useState([]);
   const [stats, setStats] = useState(null);
   const [isLoading, setIsLoading] = useState(false);

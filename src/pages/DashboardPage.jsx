@@ -47,7 +47,7 @@ export default function DashboardPage({ onSelectDetails }) {
                 width: '40px',
                 height: '40px',
                 borderRadius: '50%',
-                background: 'rgba(5, 150, 105, 0.1)',
+                background: 'rgba(37, 99, 235, 0.1)',
                 color: 'var(--color-primary)',
                 display: 'flex',
                 alignItems: 'center',

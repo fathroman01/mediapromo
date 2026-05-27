@@ -65,6 +65,8 @@ export default function PromoForm({ onSaveSuccess, currentUser }) {
   const [regenciesList, setRegenciesList] = useState([]);
   const [districtsList, setDistrictsList] = useState([]);
   const [villagesList, setVillagesList] = useState([]);
+  // Mode input teks manual saat offline & tidak ada cache
+  const [geoOfflineMode, setGeoOfflineMode] = useState({ district: false, village: false });
 
   // Selected API IDs to fetch children
   const [selectedIds, setSelectedIds] = useState({
@@ -81,61 +83,136 @@ export default function PromoForm({ onSaveSuccess, currentUser }) {
     villages: false
   });
 
-  // Fetch provinces on mount
+  // Fetch all regencies for admin on mount/change
   useEffect(() => {
-    const fetchProvinces = async () => {
-      try {
-        setLoadingGeo(prev => ({ ...prev, provinces: true }));
-        const res = await fetch('https://www.emsifa.com/api-wilayah-indonesia/api/provinces.json');
-        if (res.ok) {
-          const data = await res.json();
-          setProvincesList(data.sort((a, b) => a.name.localeCompare(b.name)));
+    if (currentUser && currentUser.role !== 'officer') {
+      const fetchAllRegencies = async () => {
+        try {
+          setLoadingGeo(prev => ({ ...prev, regencies: true }));
+          const res = await fetch('https://www.emsifa.com/api-wilayah-indonesia/api/provinces.json');
+          if (!res.ok) throw new Error('Gagal memuat data provinsi');
+          const provinces = await res.json();
+
+          const regencyPromises = provinces.map(async (prov) => {
+            try {
+              const regRes = await fetch(`https://www.emsifa.com/api-wilayah-indonesia/api/regencies/${prov.id}.json`);
+              if (regRes.ok) {
+                const regs = await regRes.json();
+                return regs.map(r => ({
+                  id: r.id,
+                  name: r.name,
+                  provinceId: prov.id,
+                  provinceName: prov.name
+                }));
+              }
+            } catch (e) {
+              console.error(e);
+            }
+            return [];
+          });
+
+          const results = await Promise.all(regencyPromises);
+          const combined = results.flat().sort((a, b) => a.name.localeCompare(b.name));
+          setRegenciesList(combined);
+        } catch (err) {
+          console.error('Gagal memuat semua wilayah:', err);
+          addToast('Gagal memuat daftar wilayah.', 'error');
+        } finally {
+          setLoadingGeo(prev => ({ ...prev, regencies: false }));
         }
-      } catch (err) {
-        console.error('Gagal memuat provinsi:', err);
-      } finally {
-        setLoadingGeo(prev => ({ ...prev, provinces: false }));
-      }
-    };
-    fetchProvinces();
-  }, []);
+      };
+      fetchAllRegencies();
+    }
+  }, [currentUser]);
 
   // Handle auto-prefill & lock for officer
   useEffect(() => {
     if (currentUser && currentUser.role === 'officer') {
-      setFormData(prev => ({
-        ...prev,
-        province: currentUser.assignedProvinceName || '',
-        regency: (currentUser.assignedRegencyName || '').replace(/^KABUPATEN\b/gi, 'KAB.'),
-        reporterName: currentUser.name || '',
-        district: '',
-        village: ''
-      }));
-      setSelectedIds({
-        provinceId: currentUser.assignedProvinceId || '',
-        regencyId: currentUser.assignedRegencyId || '',
-        districtId: ''
-      });
-      setRegenciesList([]);
-      setDistrictsList([]);
-      setVillagesList([]);
+      const regIds = (currentUser.assignedRegencyId || '').split(',').filter(Boolean);
+      const regNames = (currentUser.assignedRegencyName || '').split(',').filter(Boolean);
+      const provIds = (currentUser.assignedProvinceId || '').split(',').filter(Boolean);
+      const provNames = (currentUser.assignedProvinceName || '').split(',').filter(Boolean);
 
-      if (currentUser.assignedRegencyId) {
-        const fetchDistricts = async () => {
-          try {
+      if (regIds.length <= 1) {
+        // Old behavior: single regency lock
+        setFormData(prev => ({
+          ...prev,
+          province: currentUser.assignedProvinceName || '',
+          regency: (currentUser.assignedRegencyName || '').replace(/^KABUPATEN\b/gi, 'KAB.'),
+          reporterName: currentUser.name || '',
+          district: '',
+          village: ''
+        }));
+        setSelectedIds({
+          provinceId: currentUser.assignedProvinceId || '',
+          regencyId: currentUser.assignedRegencyId || '',
+          districtId: ''
+        });
+        setRegenciesList([]);
+        setDistrictsList([]);
+        setVillagesList([]);
+
+        if (currentUser.assignedRegencyId) {
+          const fetchDistricts = async () => {
             setLoadingGeo(prev => ({ ...prev, districts: true }));
-            const res = await fetch(`https://www.emsifa.com/api-wilayah-indonesia/api/districts/${currentUser.assignedRegencyId}.json`);
-            if (res.ok) {
-              const data = await res.json();
-              setDistrictsList(data.sort((a, b) => a.name.localeCompare(b.name)));
+            const cacheKey = `districts_${currentUser.assignedRegencyId}`;
+            try {
+              const res = await fetch(`https://www.emsifa.com/api-wilayah-indonesia/api/districts/${currentUser.assignedRegencyId}.json`);
+              if (res.ok) {
+                const data = await res.json();
+                const sorted = data.sort((a, b) => a.name.localeCompare(b.name));
+                setDistrictsList(sorted);
+                setGeoOfflineMode(prev => ({ ...prev, district: false }));
+                dbService.cacheGeoData(cacheKey, sorted).catch(() => {});
+              }
+            } catch (err) {
+              console.warn('Fetch kecamatan gagal, coba dari cache...', err);
+              try {
+                const cached = await dbService.getCachedGeoData(cacheKey);
+                if (cached && cached.length > 0) {
+                  setDistrictsList(cached);
+                  setGeoOfflineMode(prev => ({ ...prev, district: false }));
+                  addToast('Kecamatan dimuat dari cache offline.', 'warning');
+                } else {
+                  setDistrictsList([]);
+                  setGeoOfflineMode(prev => ({ ...prev, district: true }));
+                  addToast('Offline: Ketik nama kecamatan secara manual.', 'warning');
+                }
+              } catch (dbErr) {
+                setDistrictsList([]);
+                setGeoOfflineMode(prev => ({ ...prev, district: true }));
+              }
+            } finally {
+              setLoadingGeo(prev => ({ ...prev, districts: false }));
             }
-          } catch (err) {
-            console.error('Gagal memuat kecamatan:', err);
-          } finally {
-            setLoadingGeo(prev => ({ ...prev, districts: false }));
-          }
-        };
-        fetchDistricts();
+          };
+          fetchDistricts();
+        }
+      } else {
+        // New behavior: multiple regencies selection
+        const mappedRegencies = regIds.map((id, idx) => ({
+          id,
+          name: regNames[idx] || '',
+          provinceId: provIds[idx] || provIds[0] || '',
+          provinceName: provNames[idx] || provNames[0] || ''
+        }));
+
+        setFormData(prev => ({
+          ...prev,
+          province: '',
+          regency: '',
+          reporterName: currentUser.name || '',
+          district: '',
+          village: ''
+        }));
+        setSelectedIds({
+          provinceId: '',
+          regencyId: '',
+          districtId: ''
+        });
+        setRegenciesList(mappedRegencies);
+        setDistrictsList([]);
+        setVillagesList([]);
       }
     } else {
       setFormData(prev => ({
@@ -183,17 +260,23 @@ export default function PromoForm({ onSaveSuccess, currentUser }) {
 
   const handleRegencyChange = async (e) => {
     const regId = e.target.value;
-    const regName = regenciesList.find(r => r.id === regId)?.name || '';
+    const regObj = regenciesList.find(r => r.id === regId);
+    const regName = regObj?.name || '';
     const formattedRegName = regName.replace(/^KABUPATEN\b/gi, 'KAB.');
+    
+    const associatedProvId = regObj?.provinceId || selectedIds.provinceId;
+    const associatedProvName = regObj?.provinceName || formData.province;
     
     setFormData(prev => ({
       ...prev,
+      province: associatedProvName,
       regency: formattedRegName,
       district: '',
       village: ''
     }));
     setSelectedIds(prev => ({
       ...prev,
+      provinceId: associatedProvId,
       regencyId: regId,
       districtId: ''
     }));
@@ -202,15 +285,34 @@ export default function PromoForm({ onSaveSuccess, currentUser }) {
 
     if (!regId) return;
 
+    setLoadingGeo(prev => ({ ...prev, districts: true }));
+    const cacheKey = `districts_${regId}`;
     try {
-      setLoadingGeo(prev => ({ ...prev, districts: true }));
       const res = await fetch(`https://www.emsifa.com/api-wilayah-indonesia/api/districts/${regId}.json`);
       if (res.ok) {
         const data = await res.json();
-        setDistrictsList(data.sort((a, b) => a.name.localeCompare(b.name)));
+        const sorted = data.sort((a, b) => a.name.localeCompare(b.name));
+        setDistrictsList(sorted);
+        setGeoOfflineMode(prev => ({ ...prev, district: false }));
+        dbService.cacheGeoData(cacheKey, sorted).catch(() => {});
       }
     } catch (err) {
-      console.error('Gagal memuat kecamatan:', err);
+      console.warn('Fetch kecamatan gagal, coba dari cache...', err);
+      try {
+        const cached = await dbService.getCachedGeoData(cacheKey);
+        if (cached && cached.length > 0) {
+          setDistrictsList(cached);
+          setGeoOfflineMode(prev => ({ ...prev, district: false }));
+          addToast('Kecamatan dimuat dari cache offline.', 'warning');
+        } else {
+          setDistrictsList([]);
+          setGeoOfflineMode(prev => ({ ...prev, district: true }));
+          addToast('Offline: Ketik nama kecamatan secara manual.', 'warning');
+        }
+      } catch (dbErr) {
+        setDistrictsList([]);
+        setGeoOfflineMode(prev => ({ ...prev, district: true }));
+      }
     } finally {
       setLoadingGeo(prev => ({ ...prev, districts: false }));
     }
@@ -233,15 +335,34 @@ export default function PromoForm({ onSaveSuccess, currentUser }) {
 
     if (!distId) return;
 
+    setLoadingGeo(prev => ({ ...prev, villages: true }));
+    const cacheKey = `villages_${distId}`;
     try {
-      setLoadingGeo(prev => ({ ...prev, villages: true }));
       const res = await fetch(`https://www.emsifa.com/api-wilayah-indonesia/api/villages/${distId}.json`);
       if (res.ok) {
         const data = await res.json();
-        setVillagesList(data.sort((a, b) => a.name.localeCompare(b.name)));
+        const sorted = data.sort((a, b) => a.name.localeCompare(b.name));
+        setVillagesList(sorted);
+        setGeoOfflineMode(prev => ({ ...prev, village: false }));
+        dbService.cacheGeoData(cacheKey, sorted).catch(() => {});
       }
     } catch (err) {
-      console.error('Gagal memuat desa/kelurahan:', err);
+      console.warn('Fetch desa gagal, coba dari cache...', err);
+      try {
+        const cached = await dbService.getCachedGeoData(cacheKey);
+        if (cached && cached.length > 0) {
+          setVillagesList(cached);
+          setGeoOfflineMode(prev => ({ ...prev, village: false }));
+          addToast('Desa/kelurahan dimuat dari cache offline.', 'warning');
+        } else {
+          setVillagesList([]);
+          setGeoOfflineMode(prev => ({ ...prev, village: true }));
+          addToast('Offline: Ketik nama desa/kelurahan secara manual.', 'warning');
+        }
+      } catch (dbErr) {
+        setVillagesList([]);
+        setGeoOfflineMode(prev => ({ ...prev, village: true }));
+      }
     } finally {
       setLoadingGeo(prev => ({ ...prev, villages: false }));
     }
@@ -340,13 +461,13 @@ export default function PromoForm({ onSaveSuccess, currentUser }) {
         attribution: '&copy; OpenStreetMap &copy; CARTO'
       }).addTo(map);
       
-      const greenIcon = L.divIcon({
+      const blueIcon = L.divIcon({
         className: 'custom-div-icon',
         html: `<div style="
           width: 24px;
           height: 24px;
           border-radius: 50% 50% 50% 0;
-          background: #059669;
+          background: #2563eb;
           transform: rotate(-45deg);
           border: 2px solid white;
           box-shadow: 0 4px 10px rgba(0,0,0,0.3);
@@ -364,7 +485,7 @@ export default function PromoForm({ onSaveSuccess, currentUser }) {
       });
 
       const marker = L.marker([tempCoords.lat, tempCoords.lng], {
-        icon: greenIcon,
+        icon: blueIcon,
         draggable: true
       }).addTo(map);
       
@@ -398,6 +519,8 @@ export default function PromoForm({ onSaveSuccess, currentUser }) {
   const [photoPreview, setPhotoPreview] = useState('');
   const [gpsStatus, setGpsStatus] = useState('idle'); // idle, loading, success, error
   const [gpsErrorMsg, setGpsErrorMsg] = useState('');
+  const [gpsAccuracy, setGpsAccuracy] = useState(null);   // nilai meter akurasi GPS
+  const [gpsAttempt, setGpsAttempt] = useState(0);        // percobaan ke-berapa (1-3)
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitStatus, setSubmitStatus] = useState('idle'); // idle, success, error
   const [errorMsg, setErrorMsg] = useState('');
@@ -412,28 +535,41 @@ export default function PromoForm({ onSaveSuccess, currentUser }) {
     }));
   };
 
-  // Get current GPS coordinates
+  // Get current GPS coordinates — pakai getBestLocation (retry 3x, pilih akurasi terbaik)
   const getGPSLocation = async () => {
     setGpsStatus('loading');
     setGpsErrorMsg('');
+    setGpsAccuracy(null);
+    setGpsAttempt(0);
 
     try {
-      const coords = await gps.getCurrentLocation();
+      const coords = await gps.getBestLocation(
+        (attempt, accuracy) => {
+          setGpsAttempt(attempt);
+          setGpsAccuracy(accuracy);
+        },
+        3,   // maxAttempts
+        30   // targetAccuracy: berhenti jika sudah <= 30 meter
+      );
       setFormData(prev => ({
         ...prev,
         latitude: coords.latitude.toFixed(6),
-        longitude: coords.longitude.toFixed(6)
+        longitude: coords.longitude.toFixed(6),
+        gpsAccuracy: coords.accuracy ? Math.round(coords.accuracy) : null
       }));
+      setGpsAccuracy(coords.accuracy);
       setGpsStatus('success');
       setGpsErrorMsg('');
     } catch (error) {
       console.error('GPS Geolocation Error:', error);
       setGpsStatus('error');
       setGpsErrorMsg(error.message);
+      setGpsAccuracy(null);
       setFormData(prev => ({
         ...prev,
         latitude: '',
-        longitude: ''
+        longitude: '',
+        gpsAccuracy: null
       }));
     }
   };
@@ -494,6 +630,7 @@ export default function PromoForm({ onSaveSuccess, currentUser }) {
     // Structure the data to send
     const cleanPayload = {
       ...formData,
+      installationTime: new Date().toLocaleTimeString('id-ID', { hour12: false }), // Mencatat jam saat ini secara otomatis (format HH:mm:ss)
       mediaType: activeMediaTypes[0],
       width: mediaSelections[activeMediaTypes[0]].width || '',
       height: mediaSelections[activeMediaTypes[0]].height || '',
@@ -650,9 +787,10 @@ export default function PromoForm({ onSaveSuccess, currentUser }) {
                   name="outletName" 
                   value={formData.outletName} 
                   onChange={handleChange}
-                  placeholder="Contoh: Indomaret Kemang" 
+                  placeholder="Contoh: Toko Sehat Tentrem" 
                   className="android-input"
                   required 
+                  autoComplete="off"
                 />
               </div>
             </div>
@@ -668,6 +806,7 @@ export default function PromoForm({ onSaveSuccess, currentUser }) {
                   placeholder="Jl. Kemang Raya No. 10..." 
                   className="android-input"
                   style={{ resize: 'none', minHeight: '44px' }}
+                  autoComplete="off"
                 />
               </div>
             </div>
@@ -679,88 +818,129 @@ export default function PromoForm({ onSaveSuccess, currentUser }) {
               <Compass size={18} color="var(--color-primary)" /> Wilayah & Lokasi GPS
             </span>
 
-            {currentUser?.role !== 'officer' && (
-              <div className="android-field">
-                <div className="android-field-icon"><Map size={20} /></div>
-                <div className="android-field-content">
-                  <label className="android-label">Provinsi</label>
-                  <select 
-                    name="province" 
-                    value={selectedIds.provinceId} 
-                    onChange={handleProvinceChange} 
-                    className="android-input"
-                  >
-                    <option value="">{loadingGeo.provinces ? 'Memuat...' : '-- Pilih Provinsi --'}</option>
-                    {provincesList.map(prov => (
-                      <option key={prov.id} value={prov.id}>{prov.name}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-            )}
-
             <div className="android-field">
               <div className="android-field-icon"><Map size={20} /></div>
               <div className="android-field-content">
                 <label className="android-label">Kabupaten / Kota</label>
                 <select 
                   name="regency" 
-                  value={currentUser?.role === 'officer' ? currentUser.assignedRegencyId : selectedIds.regencyId} 
+                  value={(() => {
+                    const isOfficer = currentUser?.role === 'officer';
+                    const regIds = (currentUser?.assignedRegencyId || '').split(',').filter(Boolean);
+                    const isLockedOfficer = isOfficer && regIds.length <= 1;
+                    return isLockedOfficer ? currentUser.assignedRegencyId : selectedIds.regencyId;
+                  })()} 
                   onChange={handleRegencyChange} 
                   className="android-input"
-                  disabled={currentUser?.role === 'officer' || !selectedIds.provinceId}
+                  disabled={(() => {
+                    const isOfficer = currentUser?.role === 'officer';
+                    const regIds = (currentUser?.assignedRegencyId || '').split(',').filter(Boolean);
+                    const isLockedOfficer = isOfficer && regIds.length <= 1;
+                    if (isLockedOfficer) return true;
+                    return loadingGeo.regencies;
+                  })()}
                 >
-                  {currentUser?.role === 'officer' ? (
-                    <option value={currentUser.assignedRegencyId}>{currentUser.assignedRegencyName.replace(/^KABUPATEN\b/gi, 'KAB.')}</option>
-                  ) : (
-                    <>
-                      <option value="">{loadingGeo.regencies ? 'Memuat...' : '-- Pilih Kota/Kab --'}</option>
-                      {regenciesList.map(reg => (
-                        <option key={reg.id} value={reg.id}>
-                          {reg.name.replace(/^KABUPATEN\b/gi, 'KAB.')}
+                  {(() => {
+                    const isOfficer = currentUser?.role === 'officer';
+                    const regIds = (currentUser?.assignedRegencyId || '').split(',').filter(Boolean);
+                    const isLockedOfficer = isOfficer && regIds.length <= 1;
+
+                    if (isLockedOfficer) {
+                      return (
+                        <option value={currentUser.assignedRegencyId}>
+                          {currentUser.assignedRegencyName.replace(/^KABUPATEN\b/gi, 'KAB.')}
                         </option>
-                      ))}
-                    </>
+                      );
+                    } else {
+                      return (
+                        <>
+                          <option value="">{loadingGeo.regencies ? 'Memuat...' : '-- Pilih Kabupaten / Kota --'}</option>
+                          {regenciesList.map(reg => {
+                            const formattedName = reg.name.replace(/^KABUPATEN\b/gi, 'KAB.');
+                            const label = reg.provinceName ? `${formattedName} (${reg.provinceName})` : formattedName;
+                            return (
+                              <option key={reg.id} value={reg.id}>
+                                {label}
+                              </option>
+                            );
+                          })}
+                        </>
+                      );
+                    }
+                  })()}
+                </select>
+              </div>
+            </div>
+
+            <div className="android-field">
+              <div className="android-field-icon"><MapPin size={20} /></div>
+              <div className="android-field-content">
+                <label className="android-label" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  Kecamatan
+                  {geoOfflineMode.district && (
+                    <span style={{ fontSize: '0.65rem', background: 'rgba(234,179,8,0.15)', color: '#ca8a04', padding: '1px 6px', borderRadius: '8px', fontWeight: '600' }}>⚡ Offline - Manual</span>
                   )}
-                </select>
+                </label>
+                {geoOfflineMode.district ? (
+                  <input
+                    type="text"
+                    name="district"
+                    value={formData.district}
+                    onChange={handleChange}
+                    placeholder="Ketik nama kecamatan..."
+                    className="android-input"
+                    style={{ borderBottom: '2px solid #ca8a04' }}
+                  />
+                ) : (
+                  <select
+                    name="district"
+                    value={selectedIds.districtId}
+                    onChange={handleDistrictChange}
+                    className="android-input"
+                    disabled={!selectedIds.regencyId || loadingGeo.districts}
+                  >
+                    <option value="">{loadingGeo.districts ? 'Memuat...' : '-- Pilih Kecamatan --'}</option>
+                    {districtsList.map(dist => (
+                      <option key={dist.id} value={dist.id}>{dist.name}</option>
+                    ))}
+                  </select>
+                )}
               </div>
             </div>
 
             <div className="android-field">
               <div className="android-field-icon"><MapPin size={20} /></div>
               <div className="android-field-content">
-                <label className="android-label">Kecamatan</label>
-                <select 
-                  name="district" 
-                  value={selectedIds.districtId} 
-                  onChange={handleDistrictChange} 
-                  className="android-input"
-                  disabled={!selectedIds.regencyId}
-                >
-                  <option value="">{loadingGeo.districts ? 'Memuat...' : '-- Pilih Kecamatan --'}</option>
-                  {districtsList.map(dist => (
-                    <option key={dist.id} value={dist.id}>{dist.name}</option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            <div className="android-field">
-              <div className="android-field-icon"><MapPin size={20} /></div>
-              <div className="android-field-content">
-                <label className="android-label">Kelurahan / Desa</label>
-                <select 
-                  name="village" 
-                  value={formData.village} 
-                  onChange={handleVillageChange} 
-                  className="android-input"
-                  disabled={!selectedIds.districtId}
-                >
-                  <option value="">{loadingGeo.villages ? 'Memuat...' : '-- Pilih Kelurahan --'}</option>
-                  {villagesList.map(vil => (
-                    <option key={vil.name} value={vil.name}>{vil.name}</option>
-                  ))}
-                </select>
+                <label className="android-label" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  Kelurahan / Desa
+                  {geoOfflineMode.village && (
+                    <span style={{ fontSize: '0.65rem', background: 'rgba(234,179,8,0.15)', color: '#ca8a04', padding: '1px 6px', borderRadius: '8px', fontWeight: '600' }}>⚡ Offline - Manual</span>
+                  )}
+                </label>
+                {geoOfflineMode.village ? (
+                  <input
+                    type="text"
+                    name="village"
+                    value={formData.village}
+                    onChange={handleChange}
+                    placeholder="Ketik nama desa/kelurahan..."
+                    className="android-input"
+                    style={{ borderBottom: '2px solid #ca8a04' }}
+                  />
+                ) : (
+                  <select
+                    name="village"
+                    value={formData.village}
+                    onChange={handleVillageChange}
+                    className="android-input"
+                    disabled={!selectedIds.districtId || loadingGeo.villages}
+                  >
+                    <option value="">{loadingGeo.villages ? 'Memuat...' : '-- Pilih Kelurahan --'}</option>
+                    {villagesList.map(vil => (
+                      <option key={vil.name} value={vil.name}>{vil.name}</option>
+                    ))}
+                  </select>
+                )}
               </div>
             </div>
 
@@ -812,12 +992,23 @@ export default function PromoForm({ onSaveSuccess, currentUser }) {
                   />
                 </div>
                 
-                {gpsStatus === 'loading' && <span style={{ fontSize: '0.7rem', color: 'var(--color-info)', marginTop: '4px', display: 'block' }}>Mencari lokasi...</span>}
-                {gpsStatus === 'success' && (
-                  <span style={{ fontSize: '0.7rem', color: 'var(--color-success)', marginTop: '4px', display: 'block' }}>
-                    🟢 Lokasi aktif: {formData.latitude}, {formData.longitude}
+                {gpsStatus === 'loading' && (
+                  <span style={{ fontSize: '0.7rem', color: 'var(--color-info)', marginTop: '4px', display: 'block' }}>
+                    ⏳ Mencari lokasi terbaik... (Percobaan {gpsAttempt}/3
+                    {gpsAccuracy ? ` — saat ini ±${Math.round(gpsAccuracy)}m` : ''})
                   </span>
                 )}
+                {gpsStatus === 'success' && (() => {
+                  const accInfo = gps.getAccuracyLabel(gpsAccuracy);
+                  return (
+                    <span style={{ fontSize: '0.7rem', color: accInfo.color, marginTop: '4px', display: 'block', fontWeight: '600' }}>
+                      {accInfo.emoji} {accInfo.label}
+                      <span style={{ fontWeight: '400', color: 'var(--text-muted)', marginLeft: '6px' }}>
+                        ({formData.latitude}, {formData.longitude})
+                      </span>
+                    </span>
+                  );
+                })()}
                 {gpsStatus === 'error' && <span style={{ fontSize: '0.7rem', color: 'var(--color-danger)', marginTop: '4px', display: 'block' }}>⚠️ {gpsErrorMsg}</span>}
               </div>
             </div>
@@ -845,7 +1036,7 @@ export default function PromoForm({ onSaveSuccess, currentUser }) {
                       flexDirection: 'column',
                       gap: '0.65rem',
                       padding: '0.75rem 1rem',
-                      background: sel.active ? 'rgba(5, 150, 105, 0.03)' : 'rgba(15, 23, 42, 0.02)',
+                      background: sel.active ? 'rgba(37, 99, 235, 0.03)' : 'rgba(15, 23, 42, 0.02)',
                       border: '1.5px solid ' + (sel.active ? 'var(--color-primary)' : 'var(--border-color)'),
                       borderRadius: '12px',
                       transition: 'all 0.2s ease',
@@ -934,7 +1125,9 @@ export default function PromoForm({ onSaveSuccess, currentUser }) {
                   value={formData.installationDate} 
                   onChange={handleChange}
                   className="android-input" 
-                  style={{ marginTop: '4px' }}
+                  style={{ marginTop: '4px', backgroundColor: 'rgba(15, 23, 42, 0.05)', color: 'var(--text-muted)', cursor: 'not-allowed' }}
+                  readOnly
+                  title="Tanggal otomatis diisi hari ini"
                 />
               </div>
             </div>
@@ -957,7 +1150,7 @@ export default function PromoForm({ onSaveSuccess, currentUser }) {
                 <div className="upload-container" style={{ margin: '0.25rem 0 0' }}>
                   <Upload className="upload-icon" />
                   <span style={{ fontSize: '0.85rem', fontWeight: '600', color: 'var(--text-main)' }}>Ambil Foto Kamera HP</span>
-                  <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Mendukung kamera langsung di lapangan</span>
+                  <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Gunakan mode landscape / miring untuk mengambil foto</span>
                   <input 
                     type="file" 
                     accept="image/*" 
@@ -1096,12 +1289,10 @@ export default function PromoForm({ onSaveSuccess, currentUser }) {
                 />
               )}
               
-              <div style={{ marginTop: '1rem', background: 'rgba(5, 150, 105, 0.05)', padding: '0.75rem', borderRadius: '8px', fontSize: '0.8rem', color: 'var(--text-muted)', border: '1px solid rgba(5, 150, 105, 0.15)' }}>
+              <div style={{ marginTop: '1rem', background: 'rgba(37, 99, 235, 0.05)', padding: '0.75rem', borderRadius: '8px', fontSize: '0.8rem', color: 'var(--text-muted)', border: '1px solid rgba(37, 99, 235, 0.15)' }}>
                 <div>📍 <strong>Latitude:</strong> {typeof tempCoords.lat === 'number' ? tempCoords.lat.toFixed(6) : tempCoords.lat || '0.000000'}</div>
                 <div style={{ marginTop: '2px' }}>📍 <strong>Longitude:</strong> {typeof tempCoords.lng === 'number' ? tempCoords.lng.toFixed(6) : tempCoords.lng || '0.000000'}</div>
-                <div style={{ marginTop: '6px', fontSize: '0.75rem', color: 'var(--color-primary)', fontWeight: '600' }}>
-                  {window.L ? '💡 Tips: Geser penanda pin hijau atau klik di mana saja pada peta untuk mengatur lokasi toko secara manual.' : '💡 Info: Koordinat akan tersimpan saat Anda mengeklik "Simpan Lokasi".'}
-                </div>
+
               </div>
               
               <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1rem', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -1112,7 +1303,7 @@ export default function PromoForm({ onSaveSuccess, currentUser }) {
                   disabled={gpsStatus === 'loading'}
                   style={{ padding: '0.5rem 0.75rem', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '4px' }}
                 >
-                  {gpsStatus === 'loading' ? <RefreshCw className="pulse-green" size={12} style={{ animation: 'spin 1s linear infinite' }} /> : <Compass size={12} />} Lacak Posisi Asli HP
+                  {gpsStatus === 'loading' ? <RefreshCw className="pulse-green" size={12} style={{ animation: 'spin 1s linear infinite' }} /> : <Compass size={12} />} Arahkan Posisi
                 </button>
                 
                 <div style={{ display: 'flex', gap: '0.5rem' }}>

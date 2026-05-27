@@ -24,17 +24,7 @@ export default function LoginPage() {
     }
   };
 
-  const handleQuickLogin = async (username, password) => {
-    setIsLoggingIn(true);
-    setLoginError('');
-    try {
-      await login(username, password);
-    } catch (err) {
-      setLoginError(err.message || 'Gagal masuk menggunakan akun demo.');
-    } finally {
-      setIsLoggingIn(false);
-    }
-  };
+
 
   return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', padding: '1.5rem' }}>
@@ -93,43 +83,6 @@ export default function LoginPage() {
           </button>
         </form>
 
-        <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '1rem', marginTop: '0.5rem' }}>
-          <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.75rem', textAlign: 'center' }}>
-            Quick Login Demo Accounts:
-          </span>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-            <button
-              type="button"
-              className="btn btn-secondary"
-              style={{ justifyContent: 'space-between', padding: '0.5rem 0.75rem', fontSize: '0.75rem', borderRadius: '6px' }}
-              onClick={() => handleQuickLogin('admin', 'admin')}
-              disabled={isLoggingIn}
-            >
-              <span>🔑 <strong>Admin Pusat</strong></span>
-              <span style={{ color: 'var(--text-muted)' }}>Nasional</span>
-            </button>
-            <button
-              type="button"
-              className="btn btn-secondary"
-              style={{ justifyContent: 'space-between', padding: '0.5rem 0.75rem', fontSize: '0.75rem', borderRadius: '6px' }}
-              onClick={() => handleQuickLogin('budi', 'budi')}
-              disabled={isLoggingIn}
-            >
-              <span>👤 <strong>Budi Santoso (Petugas)</strong></span>
-              <span style={{ color: 'var(--color-primary)' }}>Jakarta Selatan</span>
-            </button>
-            <button
-              type="button"
-              className="btn btn-secondary"
-              style={{ justifyContent: 'space-between', padding: '0.5rem 0.75rem', fontSize: '0.75rem', borderRadius: '6px' }}
-              onClick={() => handleQuickLogin('ani', 'ani')}
-              disabled={isLoggingIn}
-            >
-              <span>👤 <strong>Ani Wijaya (Petugas)</strong></span>
-              <span style={{ color: 'var(--color-info)' }}>Kota Tangerang</span>
-            </button>
-          </div>
-        </div>
       </div>
     </div>
   );

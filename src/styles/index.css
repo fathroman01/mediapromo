@@ -8,10 +8,10 @@
   --bg-surface: rgba(255, 255, 255, 0.95);
   --bg-surface-solid: #ffffff;
   --border-color: rgba(15, 23, 42, 0.08);
-  --border-focus: rgba(5, 150, 105, 0.4);
+  --border-focus: rgba(37, 99, 235, 0.4);
 
-  --color-primary: #059669;
-  --color-primary-hover: #047857;
+  --color-primary: #2563eb;
+  --color-primary-hover: #1d4ed8;
   --color-secondary: #0d9488;
   --color-success: #10b981;
   --color-warning: #f59e0b;
@@ -23,11 +23,11 @@
   --text-inverse: #ffffff;
 
   /* Gradients */
-  --grad-primary: linear-gradient(135deg, #059669 0%, #0ea5e9 100%);
+  --grad-primary: linear-gradient(135deg, #2563eb 0%, #0ea5e9 100%);
   --grad-success: linear-gradient(135deg, #10b981 0%, #059669 100%);
   --grad-danger: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
   --grad-warning: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
-  --grad-bg: radial-gradient(circle at 90% 10%, rgba(5, 150, 105, 0.08) 0%, transparent 50%), radial-gradient(circle at 10% 90%, rgba(14, 165, 233, 0.05) 0%, transparent 50%), #f1f5f9;
+  --grad-bg: radial-gradient(circle at 90% 10%, rgba(37, 99, 235, 0.08) 0%, transparent 50%), radial-gradient(circle at 10% 90%, rgba(14, 165, 233, 0.05) 0%, transparent 50%), #f1f5f9;
 
   /* Shadows & Glass */
   --glass-shadow: 0 8px 30px rgba(15, 23, 42, 0.08), 0 2px 8px rgba(15, 23, 42, 0.04);
@@ -96,11 +96,30 @@ h1, h2, h3, h4, h5, h6 {
 .app-container {
   max-width: 1400px;
   margin: 0 auto;
-  padding: 1.5rem;
+  padding: 0 1.5rem 1.5rem 1.5rem; /* No top padding so header aligns perfectly with top edge */
   display: flex;
   flex-direction: column;
   min-height: 100vh;
   gap: 1.5rem;
+}
+
+.main-content {
+  padding-left: 2rem;
+}
+
+/* Sidebar dekoratif di sisi kiri */
+.left-decorative-sidebar {
+  display: none; /* Disembunyikan pada tampilan web/desktop */
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 2rem; /* Sisa gap 1.5rem dengan main content (karena padding-left 3.5rem total) */
+  background: linear-gradient(180deg, rgba(224, 242, 254, 0.95) 0%, rgba(191, 219, 254, 0.95) 100%);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border-right: 1px solid var(--border-color);
+  z-index: 50; /* Berada di bawah header dan navbar agar seolah menyambung */
 }
 
 /* Header & Navigation */
@@ -109,13 +128,34 @@ h1, h2, h3, h4, h5, h6 {
   justify-content: space-between;
   align-items: center;
   padding: 1.25rem 1.75rem;
-  background: var(--bg-surface);
-  backdrop-filter: var(--glass-blur);
-  -webkit-backdrop-filter: var(--glass-blur);
+  background: #1e3a8a;
   border: 1px solid var(--border-color);
-  border-radius: var(--radius-md);
+  border-left: none;
+  border-right: none;
   box-shadow: var(--glass-shadow);
-  z-index: 10;
+  z-index: 100;
+  position: -webkit-sticky;
+  position: sticky;
+  top: 0;
+  align-self: flex-start;
+  width: 100vw;
+  margin-left: calc(-50vw + 50%);
+}
+
+/* Lengkungan (inner curve) untuk menghubungkan header dan sidebar kiri dengan mulus */
+.app-header::before {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 2rem;
+  width: 26px; /* Kompensasi 1px untuk margin negatif */
+  height: 26px;
+  background: radial-gradient(circle at 100% 100%, transparent 24.5px, #1e3a8a 25px);
+  pointer-events: none;
+  z-index: 101;
+  margin-top: -1px; /* Menutup celah putih sub-pixel */
+  margin-left: -1px;
+  display: none; /* Dihilangkan khusus untuk tampilan desktop */
 }
 
 .logo-section {
@@ -139,34 +179,63 @@ h1, h2, h3, h4, h5, h6 {
 .logo-title {
   font-size: 1.5rem;
   font-weight: 800;
-  background: var(--grad-primary);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
+  color: #ffffff;
   margin: 0;
 }
 
 .logo-subtitle {
   font-size: 0.75rem;
-  color: var(--text-muted);
+  color: rgba(255, 255, 255, 0.85);
   font-family: var(--font-sans);
   font-weight: 400;
   margin-top: -2px;
 }
 
+.header-region-text {
+  color: #38bdf8;
+}
+
+/* Header Profile Button */
+.header-profile-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-full);
+  border: none;
+  background: rgba(255, 255, 255, 0.15);
+  color: #ffffff;
+  cursor: pointer;
+  transition: var(--transition-fast);
+  margin-left: 1rem;
+}
+
+.header-profile-btn:hover {
+  background: rgba(255, 255, 255, 0.25);
+  transform: translateY(-2px);
+}
+
+.header-profile-btn.active {
+  background: rgba(255, 255, 255, 0.35);
+  color: #ffffff;
+  box-shadow: none;
+}
+
 /* Navigation Tab Pill Design */
 .nav-pills {
   display: flex;
-  background: rgba(15, 23, 42, 0.04);
+  background: rgba(255, 255, 255, 0.1);
   padding: 0.35rem;
   border-radius: var(--radius-full);
-  border: 1px solid var(--border-color);
+  border: 1px solid rgba(255, 255, 255, 0.15);
   gap: 0.25rem;
 }
 
 .nav-btn {
   background: transparent;
   border: none;
-  color: var(--text-muted);
+  color: rgba(255, 255, 255, 0.7);
   font-family: var(--font-sans);
   font-size: 0.9rem;
   font-weight: 600;
@@ -681,12 +750,12 @@ select option,
 
 /* Camera File Upload Uploader Box */
 .upload-container {
-  border: 2px dashed rgba(5, 150, 105, 0.25);
+  border: 2px dashed rgba(37, 99, 235, 0.25);
   border-radius: var(--radius-md);
   padding: 1.5rem;
   text-align: center;
   cursor: pointer;
-  background: rgba(5, 150, 105, 0.03);
+  background: rgba(37, 99, 235, 0.03);
   transition: var(--transition-fast);
   position: relative;
   display: flex;
@@ -698,7 +767,7 @@ select option,
 
 .upload-container:hover {
   border-color: var(--color-primary);
-  background: rgba(5, 150, 105, 0.08);
+  background: rgba(37, 99, 235, 0.08);
 }
 
 .upload-container input[type="file"] {
@@ -841,8 +910,8 @@ select option,
 
 /* Officer Restriction Banner styling */
 .officer-restriction-banner {
-  background: rgba(5, 150, 105, 0.06);
-  border: 1px solid rgba(5, 150, 105, 0.2);
+  background: rgba(37, 99, 235, 0.06);
+  border: 1px solid rgba(37, 99, 235, 0.2);
   border-radius: var(--radius-md);
   padding: 0.75rem 1.25rem;
   display: flex;
@@ -1096,8 +1165,69 @@ select option,
   }
 
   .app-container {
-    padding: 0.75rem;
+    padding: 0 0.75rem 0.75rem 0.75rem;
     gap: 1rem;
+  }
+
+  .main-content {
+    padding-left: 1.25rem;
+  }
+
+  .left-decorative-sidebar {
+    display: block;
+    width: 1.25rem; /* Sisa gap 0.75rem pada mobile (karena padding-left 2rem total) */
+  }
+
+  /* Menggabungkan Header, Sidebar, dan Navbar menjadi satu kesatuan warna yang solid (Biru Gelap) */
+  .app-header, .left-decorative-sidebar, .bottom-nav {
+    background: #1e3a8a !important; /* Biru gelap */
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+  
+  /* Sesuaikan warna teks dan logo agar terbaca di background gelap */
+  .app-header .logo-text, 
+  .app-header .logo-subtitle, 
+  .app-header .header-profile-role, 
+  .app-header strong,
+  .app-header .lucide {
+    color: #ffffff !important;
+  }
+
+  .app-header .header-region-text {
+    color: #38bdf8 !important; /* Biru langit cerah (cyan) agar menonjol di background gelap */
+  }
+
+  /* Override untuk tombol profil di header saat di mobile */
+  .header-profile-btn {
+    background: rgba(255, 255, 255, 0.15);
+    color: #ffffff;
+  }
+
+  .header-profile-btn:hover {
+    background: rgba(255, 255, 255, 0.25);
+  }
+
+  .header-profile-btn.active {
+    background: rgba(255, 255, 255, 0.35); /* Warna netral transparan, bukan putih solid */
+    color: #ffffff; 
+  }
+
+  .app-header { 
+    border-bottom: none !important; 
+    box-shadow: none !important; 
+    padding: 0.75rem 1.5rem !important; /* Menambah padding horizontal agar isi header menjorok ke dalam */
+  }
+  .bottom-nav { border-top: none !important; box-shadow: none !important; }
+  .left-decorative-sidebar { border-right: none !important; box-shadow: none !important; }
+  .app-header::before {
+    display: block; /* Dimunculkan kembali khusus di tampilan mobile */
+    left: 1.25rem;
+    width: 28px; /* Kompensasi 1px */
+    height: 28px;
+    background: radial-gradient(circle at 100% 100%, transparent 26.5px, #1e3a8a 27px);
+    margin-top: -1px; /* Menutup celah putih sub-pixel */
+    margin-left: -1px;
   }
 }
 
@@ -1136,8 +1266,8 @@ select option,
   display: flex;
   align-items: flex-start;
   gap: 0.85rem;
-  background: rgba(5, 150, 105, 0.04); /* Soft emerald green tint to indicate required/fillable data */
-  border: 1.5px solid rgba(5, 150, 105, 0.15); /* Solid soft brand border */
+  background: rgba(37, 99, 235, 0.04); /* Soft blue tint to indicate required/fillable data */
+  border: 1.5px solid rgba(37, 99, 235, 0.15); /* Solid soft brand border */
   border-radius: 12px;
   padding: 0.65rem 0.85rem;
   transition: all var(--transition-fast);
@@ -1331,22 +1461,37 @@ select.android-input option {
     bottom: 0;
     left: 0;
     right: 0;
-    height: 64px;
-    background: rgba(248, 250, 252, 0.95); /* sleek light background matching --bg-main */
-    backdrop-filter: var(--glass-blur);
-    -webkit-backdrop-filter: var(--glass-blur);
-    border-top: 1px solid var(--border-color);
+    height: 70px; /* Ketinggian direvisi menjadi lebih proporsional */
+    background: #1e3a8a !important; /* Biru gelap */
+    border-top: none !important;
     justify-content: space-around;
     align-items: center;
     z-index: 999;
-    padding: 0.25rem 0.75rem;
-    box-shadow: 0 -4px 20px rgba(15, 23, 42, 0.05);
+    padding: 0 0.5rem 4px 0.5rem; /* Sedikit padding agar tetap seimbang */
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+
+  /* Lengkungan (inner curve) untuk menghubungkan navbar dan sidebar kiri dengan mulus */
+  .bottom-nav::before {
+    content: '';
+    position: absolute;
+    bottom: 100%;
+    left: 1.25rem; /* Sesuai lebar sidebar di mobile */
+    width: 28px; /* Kompensasi 1px */
+    height: 28px;
+    background: radial-gradient(circle at 100% 0%, transparent 26.5px, #1e3a8a 27px);
+    pointer-events: none;
+    z-index: 101;
+    margin-bottom: -1px; /* Menutup celah putih sub-pixel */
+    margin-left: -1px;
   }
 
   .bottom-nav-btn {
     background: transparent;
     border: none;
-    color: var(--text-muted);
+    color: rgba(255, 255, 255, 0.6) !important; /* Putih agak redup untuk menu tidak aktif */
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -1369,34 +1514,39 @@ select.android-input option {
     padding: 4px 18px;
     border-radius: 16px;
     transition: background-color 0.25s cubic-bezier(0.4, 0, 0.2, 1), transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
-    color: var(--text-muted);
+    color: var(--text-muted) !important;
   }
 
   .bottom-nav-btn svg {
-    color: var(--text-muted);
+    color: var(--text-muted) !important;
     transition: color var(--transition-fast);
   }
 
   .bottom-nav-btn:hover {
-    color: var(--text-main);
+    color: #ffffff !important;
+  }
+  
+  .bottom-nav-btn:hover svg {
+    color: #ffffff !important;
+    border-radius: var(--radius-full);
   }
 
   .bottom-nav-btn.active {
-    color: var(--color-primary);
+    color: #ffffff !important;
   }
 
   .bottom-nav-btn.active .bottom-nav-icon-wrapper {
-    background-color: rgba(5, 150, 105, 0.15); /* pill highlight background */
-    color: var(--color-primary);
+    background: rgba(255, 255, 255, 0.15) !important;
+    color: #ffffff !important;
     transform: scale(1.05) translateY(-2px);
   }
 
   .bottom-nav-btn.active svg {
-    color: var(--color-primary);
+    color: #ffffff !important;
   }
 
   .bottom-nav-btn.active span {
-    color: var(--color-primary);
+    color: #ffffff !important;
     font-weight: 700;
   }
 }
@@ -1422,11 +1572,22 @@ select.android-input option {
   transition: all var(--transition-fast) !important;
 }
 .media-row:hover {
-  background: rgba(5, 150, 105, 0.04) !important;
-  border-color: rgba(5, 150, 105, 0.4) !important;
+  background: rgba(37, 99, 235, 0.04) !important;
+  border-color: rgba(37, 99, 235, 0.4) !important;
 }
 .media-row.active {
-  background: rgba(5, 150, 105, 0.06) !important;
+  background: rgba(37, 99, 235, 0.06) !important;
   border-color: var(--color-primary) !important;
-  box-shadow: 0 4px 15px rgba(5, 150, 105, 0.08);
+  box-shadow: 0 4px 15px rgba(37, 99, 235, 0.08);
+}
+
+/* Mobile-only elements */
+.mobile-only-btn {
+  display: none !important;
+}
+
+@media (max-width: 768px) {
+  .mobile-only-btn {
+    display: flex !important;
+  }
 }

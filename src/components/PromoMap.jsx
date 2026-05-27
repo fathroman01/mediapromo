@@ -24,6 +24,13 @@ export default function PromoMap({ items, onSelectDetails, onClose }) {
         }).addTo(leafletMapInstance.current);
 
         markersGroupRef.current = L.featureGroup().addTo(leafletMapInstance.current);
+
+        // Invalidate map size after initialization to ensure it fits the fullscreen modal container
+        setTimeout(() => {
+          if (leafletMapInstance.current) {
+            leafletMapInstance.current.invalidateSize();
+          }
+        }, 300);
       }
     }
 
@@ -127,24 +134,63 @@ export default function PromoMap({ items, onSelectDetails, onClose }) {
   }, [items, onSelectDetails]);
 
   return (
-    <div className="glass-card" style={{ padding: '1rem', display: 'flex', flexDirection: 'column', height: '100%' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+    <div 
+      className="glass-card" 
+      style={{ 
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        zIndex: 1000,
+        margin: 0,
+        borderRadius: 0,
+        padding: '1rem', 
+        display: 'flex', 
+        flexDirection: 'column', 
+        height: '100vh',
+        width: '100vw',
+        background: '#ffffff',
+        boxShadow: 'none',
+        border: 'none',
+        gap: '0.75rem',
+        animation: 'fadeIn 0.25s ease-out'
+      }}
+    >
+      {/* Top Header: Title Only */}
+      <div style={{ display: 'flex', alignItems: 'center', height: '32px' }}>
         <h3 style={{ fontSize: '1.05rem', color: 'var(--text-main)', margin: 0, fontFamily: 'var(--font-display)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
           <span className="pulse-green" style={{ width: '10px', height: '10px' }}></span> Sebaran Media Promo
         </h3>
-        {onClose && (
+      </div>
+
+      {/* Map Element in the Middle */}
+      <div className="map-container-wrapper" style={{ flex: 1, height: '100%', minHeight: 'auto', borderRadius: '14px' }}>
+        <div ref={mapRef} className="leaflet-map-element"></div>
+      </div>
+
+      {/* Bottom Action Bar: Tutup Peta Button */}
+      {onClose && (
+        <div style={{ display: 'flex', width: '100%', paddingTop: '0.25rem' }}>
           <button 
             onClick={onClose} 
-            className="btn btn-secondary"
-            style={{ padding: '2px 8px', fontSize: '0.75rem', borderRadius: '6px' }}
+            className="btn btn-primary"
+            style={{ 
+              width: '100%', 
+              padding: '0.85rem', 
+              fontSize: '0.95rem', 
+              borderRadius: '12px', 
+              fontWeight: '600', 
+              justifyContent: 'center',
+              boxShadow: '0 4px 15px var(--color-primary-alpha)',
+              border: 'none',
+              color: 'white'
+            }}
           >
             Tutup Peta
           </button>
-        )}
-      </div>
-      <div className="map-container-wrapper" style={{ flex: 1, minHeight: '340px' }}>
-        <div ref={mapRef} className="leaflet-map-element"></div>
-      </div>
+        </div>
+      )}
     </div>
   );
 }

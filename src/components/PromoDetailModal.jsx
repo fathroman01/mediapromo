@@ -146,10 +146,7 @@ export default function PromoDetailModal({ promo, onClose }) {
               </span>
             </div>
 
-            <div className="info-item">
-              <span className="info-label"><User size={12} style={{ marginRight: '4px', verticalAlign: 'text-bottom' }} /> Petugas Penginput</span>
-              <span className="info-val" style={{ color: 'var(--text-main)' }}>{promo.reporterName}</span>
-            </div>
+
 
             <div className="info-item">
               <span className="info-label"><Compass size={12} style={{ marginRight: '4px', verticalAlign: 'text-bottom' }} /> Koordinat GPS</span>

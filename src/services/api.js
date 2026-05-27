@@ -183,6 +183,15 @@ export const api = {
     return res.json();
   },
 
+  async updateUser(id, userData) {
+    const res = await fetchWithRetry(`/api/users/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(userData)
+    }, 1, 1000);
+    return res.json();
+  },
+
   async deleteUser(id) {
     const res = await fetchWithRetry(`/api/users/${id}`, {
       method: 'DELETE'

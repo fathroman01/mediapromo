@@ -1,5 +1,5 @@
 const DB_NAME = 'MediaPromoST_DB';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 export const dbService = {
   db: null,
@@ -17,6 +17,10 @@ export const dbService = {
         }
         if (!db.objectStoreNames.contains('cached_promo')) {
           db.createObjectStore('cached_promo', { keyPath: 'id' });
+        }
+        // Store baru untuk cache data wilayah (kecamatan, desa)
+        if (!db.objectStoreNames.contains('cached_geo')) {
+          db.createObjectStore('cached_geo', { keyPath: 'key' });
         }
       };
 
@@ -92,6 +96,27 @@ export const dbService = {
     return new Promise((resolve, reject) => {
       const request = store.getAll();
       request.onsuccess = () => resolve(request.result || []);
+      request.onerror = (e) => reject(e.target.error);
+    });
+  },
+
+  // Simpan data wilayah ke IndexedDB
+  // key contoh: 'districts_3204', 'villages_3204010'
+  async cacheGeoData(key, data) {
+    const store = await this.getStore('cached_geo', 'readwrite');
+    return new Promise((resolve, reject) => {
+      const request = store.put({ key, data, cachedAt: new Date().toISOString() });
+      request.onsuccess = () => resolve();
+      request.onerror = (e) => reject(e.target.error);
+    });
+  },
+
+  // Ambil data wilayah dari IndexedDB
+  async getCachedGeoData(key) {
+    const store = await this.getStore('cached_geo', 'readonly');
+    return new Promise((resolve, reject) => {
+      const request = store.get(key);
+      request.onsuccess = () => resolve(request.result?.data || null);
       request.onerror = (e) => reject(e.target.error);
     });
   }

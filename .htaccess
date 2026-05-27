@@ -1,12 +1,16 @@
+Options -MultiViews
 RewriteEngine On
 RewriteBase /
 
-# 1. Route all API calls starting with api/ to api.php
-RewriteCond %{REQUEST_FILENAME} !-f
-RewriteCond %{REQUEST_FILENAME} !-d
+# 1. Route all API calls starting with /api/ to api.php (MUST come before file check)
 RewriteRule ^api/(.*)$ api.php?route=$1 [QSA,L]
 
-# 2. HTML5 History API fallback: redirect all non-file/non-directory requests to index.html
-RewriteCond %{REQUEST_FILENAME} !-f
-RewriteCond %{REQUEST_FILENAME} !-d
-RewriteRule ^(.*)$ index.html [L]
+# 2. Serve existing static files directly (uploads, dist assets, etc.)
+RewriteCond %{REQUEST_FILENAME} -f
+RewriteRule ^ - [L]
+
+RewriteCond %{REQUEST_FILENAME} -d
+RewriteRule ^ - [L]
+
+# 3. HTML5 History API fallback: all other requests go to index.html
+RewriteRule ^ index.html [L]

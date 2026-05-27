@@ -34,7 +34,7 @@ if (!file_exists($usersPath)) {
         [
             "id" => "user-admin",
             "username" => "admin",
-            "password" => "admin",
+            "password" => "media1234",
             "name" => "Administrator Pusat",
             "role" => "admin",
             "assignedProvinceId" => "",
@@ -85,8 +85,14 @@ function generateUUID() {
     return sprintf('%04x%04x', mt_rand(0, 0xffff), mt_rand(0, 0xffff));
 }
 
-// Helper to normalize media types
-$allowedMediaTypes = ['Banner', 'Pamflet', 'Sticker'];
+// Helper to read/write media types dynamically
+$mediaTypesPath = $dbDir . '/media_types.json';
+$defaultMediaTypes = ['Banner', 'Pamflet', 'Sticker'];
+if (!file_exists($mediaTypesPath)) {
+    file_put_contents($mediaTypesPath, json_encode($defaultMediaTypes, JSON_PRETTY_PRINT));
+}
+$allowedMediaTypes = json_decode(file_get_contents($mediaTypesPath), true) ?: $defaultMediaTypes;
+
 function normalizeMediaType($type, $allowed) {
     return in_array($type, $allowed) ? $type : 'Banner';
 }
@@ -105,7 +111,50 @@ function normalizeItem($item, $allowed) {
 }
 
 // Router Logic
-if ($route === 'login' && $method === 'POST') {
+
+// 0. Media Types endpoints
+if ($route === 'media-types' && $method === 'GET') {
+    echo json_encode($allowedMediaTypes);
+    exit;
+} elseif ($route === 'media-types' && $method === 'POST') {
+    $input = json_decode(file_get_contents('php://input'), true);
+    $name = isset($input['name']) ? trim($input['name']) : '';
+    if (!$name) {
+        http_response_code(400);
+        echo json_encode(["message" => "Nama tipe media wajib diisi!"]);
+        exit;
+    }
+    foreach ($allowedMediaTypes as $t) {
+        if (strtolower($t) === strtolower($name)) {
+            http_response_code(400);
+            echo json_encode(["message" => "Tipe media ini sudah ada!"]);
+            exit;
+        }
+    }
+    $allowedMediaTypes[] = $name;
+    file_put_contents($mediaTypesPath, json_encode($allowedMediaTypes, JSON_PRETTY_PRINT));
+    http_response_code(201);
+    echo json_encode(["message" => "Tipe media berhasil ditambahkan!", "data" => $allowedMediaTypes]);
+    exit;
+} elseif (preg_match('/^media-types\/(.+)$/', $route, $matches) && $method === 'DELETE') {
+    $typeName = urldecode($matches[1]);
+    $builtIn = ['Banner', 'Pamflet', 'Sticker'];
+    if (in_array($typeName, $builtIn)) {
+        http_response_code(400);
+        echo json_encode(["message" => "Tipe media bawaan tidak boleh dihapus!"]);
+        exit;
+    }
+    $filtered = array_values(array_filter($allowedMediaTypes, fn($t) => $t !== $typeName));
+    if (count($filtered) === count($allowedMediaTypes)) {
+        http_response_code(404);
+        echo json_encode(["message" => "Tipe media tidak ditemukan!"]);
+        exit;
+    }
+    file_put_contents($mediaTypesPath, json_encode($filtered, JSON_PRETTY_PRINT));
+    echo json_encode(["message" => "Tipe media berhasil dihapus!", "data" => $filtered]);
+    exit;
+
+} elseif ($route === 'login' && $method === 'POST') {
     // 1. POST /api/login
     $input = json_decode(file_get_contents('php://input'), true);
     $username = isset($input['username']) ? trim($input['username']) : '';
@@ -189,6 +238,60 @@ if ($route === 'login' && $method === 'POST') {
         exit;
     }
 
+} elseif (preg_match('/^users\/([a-zA-Z0-9\-]+)$/', $route, $matches) && $method === 'PUT') {
+    // PUT /api/users/:id
+    $userId = $matches[1];
+    if ($userId === 'user-admin') {
+        http_response_code(400);
+        echo json_encode(["message" => "Akun Administrator utama tidak boleh diedit!"]);
+        exit;
+    }
+
+    $input = json_decode(file_get_contents('php://input'), true);
+    $users = readJSON($usersPath);
+    $index = -1;
+    foreach ($users as $key => $u) {
+        if ($u['id'] === $userId) {
+            $index = $key;
+            break;
+        }
+    }
+
+    if ($index === -1) {
+        http_response_code(404);
+        echo json_encode(["message" => "User tidak ditemukan!"]);
+        exit;
+    }
+
+    $username = isset($input['username']) ? trim($input['username']) : '';
+    if ($username) {
+        foreach ($users as $key => $u) {
+            if ($key !== $index && strtolower($u['username']) === strtolower($username)) {
+                http_response_code(400);
+                echo json_encode(["message" => "Username sudah terdaftar!"]);
+                exit;
+            }
+        }
+        $users[$index]['username'] = $username;
+    }
+
+    if (isset($input['name'])) $users[$index]['name'] = trim($input['name']);
+    if (isset($input['password']) && trim($input['password']) !== '') {
+        $users[$index]['password'] = trim($input['password']);
+    }
+
+    if (isset($input['assignedProvinceId'])) $users[$index]['assignedProvinceId'] = $input['assignedProvinceId'];
+    if (isset($input['assignedProvinceName'])) $users[$index]['assignedProvinceName'] = $input['assignedProvinceName'];
+    if (isset($input['assignedRegencyId'])) $users[$index]['assignedRegencyId'] = $input['assignedRegencyId'];
+    if (isset($input['assignedRegencyName'])) $users[$index]['assignedRegencyName'] = $input['assignedRegencyName'];
+
+    writeJSON($usersPath, $users);
+    $updatedUser = $users[$index];
+    unset($updatedUser['password']);
+
+    echo json_encode(["message" => "Data petugas berhasil diperbarui!", "data" => $updatedUser]);
+    exit;
+
 } elseif (preg_match('/^users\/([a-zA-Z0-9\-]+)$/', $route, $matches) && $method === 'DELETE') {
     // 4. DELETE /api/users/:id
     $userId = $matches[1];
@@ -234,9 +337,11 @@ if ($route === 'login' && $method === 'POST') {
 
         // Apply restricted officer region filter
         if ($regencyFilter && $regencyFilter !== 'Semua' && $regencyFilter !== 'All') {
+            $regencies = array_map('trim', explode(',', $regencyFilter));
+            $regenciesUpper = array_map('strtoupper', $regencies);
             $filtered = [];
             foreach ($normalizedData as $item) {
-                if (isset($item['regency']) && strcasecmp($item['regency'], $regencyFilter) === 0) {
+                if (isset($item['regency']) && in_array(strtoupper($item['regency']), $regenciesUpper)) {
                     $filtered[] = $item;
                 }
             }
@@ -439,9 +544,11 @@ if ($route === 'login' && $method === 'POST') {
 
     // Apply restricted region filtering
     if ($regencyFilter && $regencyFilter !== 'Semua' && $regencyFilter !== 'All') {
+        $regencies = array_map('trim', explode(',', $regencyFilter));
+        $regenciesUpper = array_map('strtoupper', $regencies);
         $filtered = [];
         foreach ($promoData as $item) {
-            if (isset($item['regency']) && strcasecmp($item['regency'], $regencyFilter) === 0) {
+            if (isset($item['regency']) && in_array(strtoupper($item['regency']), $regenciesUpper)) {
                 $filtered[] = $item;
             }
         }
@@ -486,7 +593,7 @@ if ($route === 'login' && $method === 'POST') {
             $q1 = isset($item['quantity']) ? intval($item['quantity']) : 1;
             $q2 = (isset($item['hasSecondMedia']) && $item['hasSecondMedia'] && isset($item['quantity2'])) ? intval($item['quantity2']) : 0;
             
-            $stats['totalMedia'] += ($q1 + q2);
+            $stats['totalMedia'] += ($q1 + $q2);
             if (isset($stats['conditions'][$item['condition']])) {
                 $stats['conditions'][$item['condition']] += $q1;
             }

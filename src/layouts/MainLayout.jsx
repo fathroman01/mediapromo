@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Layers, User, Shield, LogOut, QrCode, Smartphone, X, LayoutDashboard, PlusCircle, ClipboardList, Users } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import LoginPage from '../pages/LoginPage';
@@ -15,6 +15,14 @@ export default function MainLayout() {
   const { currentUser, activeTab, setActiveTab, logout, networkIpInfo } = useApp();
   const [showQrModal, setShowQrModal] = useState(false);
   const [selectedPromo, setSelectedPromo] = useState(null);
+
+  // Auto scroll ke atas setiap kali ganti menu (tab)
+  useEffect(() => {
+    window.scrollTo({
+      top: 0,
+      behavior: 'smooth'
+    });
+  }, [activeTab]);
 
   if (!currentUser) {
     return (
@@ -40,7 +48,19 @@ export default function MainLayout() {
           <div>
             <h1 className="logo-title">Media Promo ST</h1>
             <div className="logo-subtitle">Pendataan & Pemantauan Media Promo</div>
+            <div className="header-region-text" style={{ fontSize: '0.9rem', fontWeight: '700', marginTop: '4px', letterSpacing: '0.01em' }}>
+              {currentUser.role === 'admin' ? 'Seluruh Wilayah' : (currentUser.assignedRegencyName ? currentUser.assignedRegencyName.split(',').map(name => name.replace(/^KABUPATEN\b/gi, 'Kab.').replace(/^KOTA\b/gi, 'Kota').replace(/\w\S*/g, (txt) => txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase())).join(', ') : '')}
+            </div>
           </div>
+
+          {/* Profile Menu Icon next to text */}
+          <button 
+            className={`header-profile-btn ${activeTab === 'profile' ? 'active' : ''}`}
+            onClick={() => setActiveTab('profile')}
+            title="Profil"
+          >
+            <User size={20} />
+          </button>
         </div>
 
         {/* Tab Navigation pills */}
@@ -74,60 +94,7 @@ export default function MainLayout() {
               <Users size={16} /> Petugas
             </button>
           )}
-        </div>
 
-        {/* User Profile / Logout section */}
-        <div className="header-profile">
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <div style={{
-              width: '32px',
-              height: '32px',
-              borderRadius: '50%',
-              background: currentUser.role === 'admin' ? 'rgba(13, 148, 136, 0.15)' : 'rgba(5, 150, 105, 0.15)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: currentUser.role === 'admin' ? 'var(--color-secondary)' : 'var(--color-primary)',
-              flexShrink: 0
-            }}>
-              {currentUser.role === 'admin' ? <Shield size={16} /> : <User size={16} />}
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', lineHeight: '1.2' }}>
-              <span style={{ fontSize: '0.85rem', fontWeight: '700', color: 'var(--text-main)' }}>{currentUser.name}</span>
-              <span className="header-profile-role" style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
-                {currentUser.role === 'admin' ? 'Administrator' : `Wilayah: ${currentUser.assignedRegencyName}`}
-              </span>
-            </div>
-          </div>
-          
-          <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
-            <button 
-              onClick={logout} 
-              className="btn btn-secondary" 
-              style={{ 
-                padding: '0.4rem 0.75rem', 
-                borderRadius: '8px', 
-                gap: '4px', 
-                fontSize: '0.75rem', 
-                border: '1px solid rgba(239, 68, 68, 0.2)',
-                background: 'rgba(239, 68, 68, 0.05)',
-                color: 'var(--color-danger)',
-                fontWeight: '600'
-              }}
-              title="Keluar dari sistem"
-            >
-              <LogOut size={12} color="var(--color-danger)" /> Keluar
-            </button>
-
-            {/* Connect Device QR Trigger */}
-            <button 
-              className="btn btn-secondary desktop-only-btn" 
-              onClick={() => setShowQrModal(true)}
-              style={{ gap: '0.4rem', border: '1px solid rgba(99, 102, 241, 0.3)', background: 'rgba(99, 102, 241, 0.05)', padding: '0.4rem 0.8rem', fontSize: '0.75rem' }}
-            >
-              <QrCode size={12} color="var(--color-primary)" /> Hubungkan
-            </button>
-          </div>
         </div>
       </header>
 
@@ -147,17 +114,106 @@ export default function MainLayout() {
             <User size={16} />
           </div>
           <div>
-            Mode Akses Terbatas: Anda login sebagai <strong>{currentUser.name}</strong>. Anda hanya dapat mengelola dan memantau data di wilayah kerja <strong>{currentUser.assignedProvinceName} - {currentUser.assignedRegencyName}</strong>.
+            Mode Akses Terbatas: Anda login sebagai <strong>{currentUser.name}</strong>. Anda hanya dapat mengelola dan memantau data di wilayah kerja <strong>{(() => {
+              const regs = (currentUser.assignedRegencyName || '').split(',').filter(Boolean);
+              const provs = (currentUser.assignedProvinceName || '').split(',').filter(Boolean);
+              return regs.map((r, i) => `${provs[i] || ''} - ${r}`).join(', ');
+            })()}</strong>.
           </div>
         </div>
       )}
 
+      {/* Decorative Left Sidebar */}
+      <div className="left-decorative-sidebar"></div>
+
       {/* Main View Container */}
-      <main style={{ minHeight: '60vh', marginBottom: '4.5rem' }}>
+      <main className="main-content" style={{ minHeight: '60vh', marginBottom: '4.5rem' }}>
         {activeTab === 'dashboard' && <DashboardPage onSelectDetails={setSelectedPromo} />}
         {activeTab === 'form' && <InputPage />}
         {activeTab === 'table' && <DataPage onSelectDetails={setSelectedPromo} />}
-        {currentUser?.role === 'admin' && activeTab === 'users' && <UserManagementPage />}
+        {currentUser?.role === 'admin' && activeTab === 'users' && <UserManagementPage onBack={() => setActiveTab('profile')} />}
+        
+        {activeTab === 'profile' && (
+          <div className="tab-content-wrapper" style={{ display: 'flex', justifyContent: 'center', padding: '1rem 0' }}>
+            <div className="glass-card" style={{ padding: '2rem', maxWidth: '420px', width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1.25rem', textAlign: 'center' }}>
+              <div style={{
+                width: '72px',
+                height: '72px',
+                borderRadius: '50%',
+                background: currentUser.role === 'admin' ? 'rgba(13, 148, 136, 0.15)' : 'rgba(37, 99, 235, 0.15)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: currentUser.role === 'admin' ? 'var(--color-secondary)' : 'var(--color-primary)',
+                flexShrink: 0,
+                boxShadow: '0 4px 12px rgba(0,0,0,0.05)'
+              }}>
+                {currentUser.role === 'admin' ? <Shield size={36} /> : <User size={36} />}
+              </div>
+              
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
+                <h3 style={{ fontSize: '1.25rem', fontWeight: '700', color: 'var(--text-main)', margin: 0 }}>{currentUser.name}</h3>
+                {currentUser.role === 'admin' && (
+                  <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                    Administrator
+                  </span>
+                )}
+              </div>
+
+              {currentUser.role !== 'admin' && (
+                <div style={{ width: '100%', background: 'rgba(15, 23, 42, 0.02)', padding: '0.85rem 1rem', borderRadius: '12px', border: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column', gap: '0.25rem', textAlign: 'left' }}>
+                  <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', fontWeight: '600' }}>wilayah</div>
+                  <div style={{ fontSize: '0.9rem', fontWeight: '700', color: 'var(--text-main)' }}>
+                    {currentUser.assignedRegencyName ? currentUser.assignedRegencyName.split(',').map(name => name.replace(/^KABUPATEN\b/gi, 'Kab.').replace(/^KOTA\b/gi, 'Kota').replace(/\w\S*/g, (txt) => txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase())).join(', ') : ''}
+                  </div>
+                </div>
+              )}
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', width: '100%', marginTop: '0.5rem' }}>
+                {currentUser.role === 'admin' && (
+                  <button 
+                    onClick={() => setActiveTab('users')} 
+                    className="btn btn-secondary mobile-only-btn" 
+                    style={{ 
+                      width: '100%',
+                      padding: '0.65rem', 
+                      borderRadius: '8px', 
+                      gap: '6px', 
+                      fontSize: '0.85rem', 
+                      border: '1px solid var(--border-color)',
+                      background: 'rgba(37, 99, 235, 0.05)',
+                      color: 'var(--color-primary)',
+                      fontWeight: '600',
+                      justifyContent: 'center',
+                      alignItems: 'center'
+                    }}
+                  >
+                    <Users size={14} color="var(--color-primary)" /> Kelola Petugas Lapangan
+                  </button>
+                )}
+
+                <button 
+                  onClick={logout} 
+                  className="btn btn-secondary" 
+                  style={{ 
+                    width: '100%',
+                    padding: '0.65rem', 
+                    borderRadius: '8px', 
+                    gap: '6px', 
+                    fontSize: '0.85rem', 
+                    border: '1px solid rgba(239, 68, 68, 0.2)',
+                    background: 'rgba(239, 68, 68, 0.05)',
+                    color: 'var(--color-danger)',
+                    fontWeight: '600',
+                    justifyContent: 'center'
+                  }}
+                >
+                  <LogOut size={14} color="var(--color-danger)" /> Keluar dari Akun
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </main>
 
       {/* Global Details Modal */}
@@ -234,17 +290,6 @@ export default function MainLayout() {
           <span>Data</span>
         </button>
 
-        {currentUser?.role === 'admin' && (
-          <button 
-            className={`bottom-nav-btn ${activeTab === 'users' ? 'active' : ''}`}
-            onClick={() => setActiveTab('users')}
-          >
-            <div className="bottom-nav-icon-wrapper">
-              <Users size={20} />
-            </div>
-            <span>Petugas</span>
-          </button>
-        )}
       </div>
 
       {/* Global Utilities */}

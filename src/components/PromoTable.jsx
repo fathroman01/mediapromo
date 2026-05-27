@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Search, Download, Trash2, ChevronDown, ChevronUp, MapPin, Calendar, User, Layers, Compass } from 'lucide-react';
+import * as XLSX from 'xlsx';
 import { CONDITION_LABELS } from '../constants';
 
 export default function PromoTable({ items, onSelectDetails, onUpdateStatus, onDeleteItem }) {
@@ -20,109 +21,54 @@ export default function PromoTable({ items, onSelectDetails, onUpdateStatus, onD
     return searchMatch && typeMatch;
   });
 
-  const exportToCSV = () => {
-    if (filteredItems.length === 0) { alert('Tidak ada data untuk diekspor.'); return; }
-    const headers = ['ID','Nama Outlet','Provinsi','Kabupaten/Kota','Kecamatan','Desa/Kelurahan','Alamat','Tipe Media','Dimensi','Tanggal Pasang','Latitude','Longitude','Petugas','Catatan'];
-    const rows = filteredItems.map(item => [
-      item.id,
-      `"${(item.outletName||'').replace(/"/g,'""')}"`,
-      `"${(item.province||'').replace(/"/g,'""')}"`,
-      `"${(item.regency || '').replace(/^KABUPATEN\b/gi, 'KAB.').replace(/"/g,'""')}"`,
-      `"${(item.district||'').replace(/"/g,'""')}"`,
-      `"${(item.village||'').replace(/"/g,'""')}"`,
-      `"${(item.address||'').replace(/"/g,'""')}"`,
-      item.mediaType,
-      item.dimensions || '-',
-      item.installationDate || '',
-      item.latitude || '',
-      item.longitude || '',
-      `"${(item.reporterName||'').replace(/"/g,'""')}"`,
-      `"${(item.notes||'').replace(/"/g,'""')}"`,
-    ]);
-    const csv = "data:text/csv;charset=utf-8,\uFEFF" + [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
-    const link = document.createElement('a');
-    link.setAttribute('href', encodeURI(csv));
-    link.setAttribute('download', `data-media-promo-${new Date().toISOString().split('T')[0]}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
-
   const exportToExcel = () => {
     if (filteredItems.length === 0) { alert('Tidak ada data untuk diekspor.'); return; }
-    const headers = ['ID','Nama Outlet','Provinsi','Kabupaten/Kota','Kecamatan','Desa/Kelurahan','Alamat','Tipe Media','Dimensi','Tanggal Pasang','Latitude','Longitude','Petugas','Catatan'];
     
-    let html = `
-      <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
-      <head>
-        <meta http-equiv="content-type" content="text/plain; charset=UTF-8"/>
-        <!--[if gte mso 9]>
-        <xml>
-          <x:ExcelWorkbook>
-            <x:ExcelWorksheets>
-              <x:ExcelWorksheet>
-                <x:Name>Data Media Promo</x:Name>
-                <x:WorksheetOptions>
-                  <x:DisplayGridlines/>
-                </x:WorksheetOptions>
-              </x:ExcelWorksheet>
-            </x:ExcelWorksheets>
-          </x:ExcelWorkbook>
-        </xml>
-        <![endif]-->
-        <style>
-          table { border-collapse: collapse; font-family: sans-serif; }
-          th { background-color: #059669; color: white; font-weight: bold; border: 1px solid #cbd5e1; padding: 8px; text-align: left; }
-          td { border: 1px solid #cbd5e1; padding: 8px; vertical-align: top; }
-        </style>
-      </head>
-      <body>
-        <table>
-          <thead>
-            <tr>
-              ${headers.map(h => `<th>${h}</th>`).join('')}
-            </tr>
-          </thead>
-          <tbody>
-    `;
+    const dataToExport = filteredItems.map(item => {
+      let types = [];
+      let dims = [];
+      const unit = item.unit || 'm';
+      
+      if (Array.isArray(item.mediaItems) && item.mediaItems.length > 0) {
+        item.mediaItems.forEach(m => {
+          types.push(`${m.type} (${m.quantity}x)`);
+          dims.push(m.width && m.height ? `${m.width} x ${m.height} ${unit}` : '-');
+        });
+      } else {
+        types.push(`${item.mediaType || 'Banner'} (${item.quantity || 1}x)`);
+        dims.push(item.dimensions || '-');
+        
+        if (item.hasSecondMedia && item.mediaType2) {
+          types.push(`${item.mediaType2} (${item.quantity2 || 1}x)`);
+          dims.push(item.dimensions2 || '-');
+        }
+      }
 
-    filteredItems.forEach(item => {
-      html += `
-        <tr>
-          <td>${item.id || ''}</td>
-          <td>${item.outletName || ''}</td>
-          <td>${item.province || ''}</td>
-          <td>${(item.regency || '').replace(/^KABUPATEN\b/gi, 'KAB.')}</td>
-          <td>${item.district || ''}</td>
-          <td>${item.village || ''}</td>
-          <td>${item.address || ''}</td>
-          <td>${item.mediaType || ''}</td>
-          <td>${item.dimensions || '-'}</td>
-          <td>${item.installationDate || ''}</td>
-          <td>${item.latitude || ''}</td>
-          <td>${item.longitude || ''}</td>
-          <td>${item.reporterName || ''}</td>
-          <td>${item.notes || ''}</td>
-        </tr>
-      `;
+      return {
+        'ID': item.id || '',
+        'Nama Outlet': item.outletName || '',
+        'Provinsi': item.province || '',
+        'Kabupaten/Kota': (item.regency || '').replace(/^KABUPATEN\b/gi, 'KAB.'),
+        'Kecamatan': item.district || '',
+        'Desa/Kelurahan': item.village || '',
+        'Alamat': item.address || '',
+        'Tipe Media': types.join(', '),
+        'Dimensi': dims.join(', '),
+        'Tanggal Pasang': item.installationDate ? item.installationDate.split('-').reverse().join('-') : '',
+        'Jam Pasang': item.installationTime || '-',
+        'Latitude': item.latitude || '',
+        'Longitude': item.longitude || '',
+        'Petugas': item.reporterName || '',
+        'Catatan': item.notes || ''
+      };
     });
 
-    html += `
-          </tbody>
-        </table>
-      </body>
-      </html>
-    `;
-
-    const blob = new Blob([html], { type: 'application/vnd.ms-excel;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.setAttribute('download', `data-media-promo-${new Date().toISOString().split('T')[0]}.xls`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+    const worksheet = XLSX.utils.json_to_sheet(dataToExport);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Data Media Promo");
+    
+    // Simpan ke file murni .xlsx
+    XLSX.writeFile(workbook, `data-media-promo-${new Date().toISOString().split('T')[0]}.xlsx`);
   };
 
   const toggle = (id) => setExpandedId(prev => prev === id ? null : id);
@@ -135,9 +81,6 @@ export default function PromoTable({ items, onSelectDetails, onUpdateStatus, onD
           Data Media Promo <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)', fontWeight: '400' }}>({filteredItems.length} entri)</span>
         </h3>
         <div style={{ display: 'flex', gap: '0.5rem' }}>
-          <button onClick={exportToCSV} className="btn btn-secondary" style={{ fontSize: '0.8rem', padding: '0.4rem 0.85rem', gap: '5px' }}>
-            <Download size={14} /> Ekspor CSV
-          </button>
           <button onClick={exportToExcel} className="btn btn-secondary" style={{ fontSize: '0.8rem', padding: '0.4rem 0.85rem', gap: '5px', borderColor: '#10b981', color: '#10b981', background: 'rgba(16,185,129,0.05)' }}>
             <Download size={14} color="#10b981" /> Ekspor Excel
           </button>
@@ -175,9 +118,9 @@ export default function PromoTable({ items, onSelectDetails, onUpdateStatus, onD
               <div
                 key={item.id}
                 style={{
-                  border: `1px solid ${isOpen ? 'rgba(5,150,105,0.35)' : 'var(--border-color)'}`,
+                  border: `1px solid ${isOpen ? 'rgba(37,99,235,0.35)' : 'var(--border-color)'}`,
                   borderRadius: 'var(--radius-sm)',
-                  background: isOpen ? 'rgba(5,150,105,0.03)' : 'rgba(255,255,255,0.7)',
+                  background: isOpen ? 'rgba(37,99,235,0.03)' : 'rgba(255,255,255,0.7)',
                   overflow: 'hidden',
                   transition: 'border-color 0.2s ease, background 0.2s ease',
                 }}
@@ -205,7 +148,7 @@ export default function PromoTable({ items, onSelectDetails, onUpdateStatus, onD
                     <div style={{ fontWeight: '600', fontSize: '0.92rem', color: 'var(--text-main)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                       {item.outletName}
                     </div>
-                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '2px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '2px', display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap' }}>
                       <Layers size={11} />
                       <span>{item.quantity || 1}x {item.mediaType}</span>
                       {item.hasSecondMedia && item.mediaType2 && (
@@ -247,7 +190,7 @@ export default function PromoTable({ items, onSelectDetails, onUpdateStatus, onD
                       <DetailItem label="Alamat" value={item.address || '-'} />
                       <DetailItem label="Dimensi" value={item.dimensions || '-'} />
                       <DetailItem label="Tanggal Pasang" value={item.installationDate ? new Date(item.installationDate).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' }) : '-'} icon={<Calendar size={12} />} />
-                      <DetailItem label="Petugas" value={item.reporterName || '-'} icon={<User size={12} />} />
+
                       <DetailItem label="Koordinat GPS" value={(item.latitude && item.longitude) ? `${item.latitude}, ${item.longitude}` : 'Tidak ada koordinat'} icon={<Compass size={12} />} />
                       {item.notes && <DetailItem label="Catatan" value={item.notes} full />}
                     </div>
