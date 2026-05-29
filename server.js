@@ -392,21 +392,30 @@ app.put('/api/promo-media/:id', async (req, res) => {
       'dimensions', 'condition', 'installationDate', 'expiryDate', 
       'latitude', 'longitude', 'notes', 'province', 'regency', 'district', 'village',
       'width', 'height', 'unit',
-      'quantity', 'hasSecondMedia', 'mediaType2', 'width2', 'height2', 'quantity2', 'dimensions2'
+      'quantity', 'hasSecondMedia', 'mediaType2', 'width2', 'height2', 'quantity2', 'dimensions2', 'conditionModifiedAt', 'conditionPhotoUrl'
     ];
 
+    let conditionChanged = false;
     for (const key of allowedUpdates) {
       if (updates[key] !== undefined) {
+        let newVal = updates[key];
         if (key === 'latitude' || key === 'longitude' || key === 'width' || key === 'height' || key === 'width2' || key === 'height2') {
-          data[index][key] = updates[key] ? parseFloat(updates[key]) : null;
+          newVal = updates[key] ? parseFloat(updates[key]) : null;
         } else if (key === 'quantity' || key === 'quantity2') {
-          data[index][key] = updates[key] ? parseInt(updates[key]) : 0;
+          newVal = updates[key] ? parseInt(updates[key]) : 0;
         } else if (key === 'hasSecondMedia') {
-          data[index][key] = updates[key] === 'true' || updates[key] === true;
-        } else {
-          data[index][key] = updates[key];
+          newVal = updates[key] === 'true' || updates[key] === true;
         }
+
+        if (key === 'condition' && data[index].condition !== newVal) {
+          conditionChanged = true;
+        }
+        data[index][key] = newVal;
       }
+    }
+
+    if (conditionChanged) {
+      data[index].conditionModifiedAt = new Date().toISOString();
     }
 
     // Recompute dimensions if width/height/unit changed
@@ -432,6 +441,96 @@ app.put('/api/promo-media/:id', async (req, res) => {
     });
   } catch (error) {
     console.error('Error updating promo entry:', error);
+    res.status(500).json({ message: 'Gagal memperbarui data: ' + error.message });
+  }
+});
+
+// 3b. Update promo media entry with optional photo (multipart post method)
+app.post('/api/promo-media/:id', upload.single('photo'), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const updates = req.body;
+
+    const data = await readDB();
+    const index = data.findIndex(item => item.id === id);
+
+    if (index === -1) {
+      return res.status(404).json({ message: 'Data media promo tidak ditemukan!' });
+    }
+
+    // If new photo is uploaded, delete old one and update path
+    if (req.file) {
+      const isConditionPhoto = updates.photoField === 'conditionPhoto' || updates.condition !== undefined;
+      const targetField = isConditionPhoto ? 'conditionPhotoUrl' : 'photoUrl';
+
+      const oldPhoto = data[index][targetField];
+      if (oldPhoto && !oldPhoto.includes('placeholder') && !oldPhoto.includes('mock-')) {
+        const filename = path.basename(oldPhoto);
+        const filePath = path.join(uploadDir, filename);
+        try {
+          await fs.unlink(filePath);
+        } catch (err) {
+          console.warn(`Could not delete old physical file: ${filePath}`, err.message);
+        }
+      }
+      data[index][targetField] = `/uploads/${req.file.filename}`;
+    }
+
+    // List of allowed fields to update
+    const allowedUpdates = [
+      'outletName', 'address', 'reporterName', 'mediaType', 
+      'condition', 'installationDate', 'expiryDate', 
+      'latitude', 'longitude', 'notes', 'province', 'regency', 'district', 'village',
+      'width', 'height', 'unit',
+      'quantity', 'hasSecondMedia', 'mediaType2', 'width2', 'height2', 'quantity2', 'conditionModifiedAt', 'conditionPhotoUrl'
+    ];
+
+    let conditionChanged = false;
+    for (const key of allowedUpdates) {
+      if (updates[key] !== undefined) {
+        let newVal = updates[key];
+        if (key === 'latitude' || key === 'longitude' || key === 'width' || key === 'height' || key === 'width2' || key === 'height2') {
+          newVal = updates[key] ? parseFloat(updates[key]) : null;
+        } else if (key === 'quantity' || key === 'quantity2') {
+          newVal = updates[key] ? parseInt(updates[key]) : 0;
+        } else if (key === 'hasSecondMedia') {
+          newVal = updates[key] === 'true' || updates[key] === true;
+        }
+
+        if (key === 'condition' && data[index].condition !== newVal) {
+          conditionChanged = true;
+        }
+        data[index][key] = newVal;
+      }
+    }
+
+    if (conditionChanged) {
+      data[index].conditionModifiedAt = new Date().toISOString();
+    }
+
+    // Recompute dimensions if width/height/unit changed
+    if (updates.width !== undefined || updates.height !== undefined || updates.unit !== undefined) {
+      const w = data[index].width;
+      const h = data[index].height;
+      const u = data[index].unit || 'm';
+      data[index].dimensions = w && h ? `${w} x ${h} ${u}` : '-';
+    }
+
+    // Recompute dimensions2 if width2/height2/unit changed
+    if (updates.width2 !== undefined || updates.height2 !== undefined || updates.unit !== undefined) {
+      const w2 = data[index].width2;
+      const h2 = data[index].height2;
+      const u = data[index].unit || 'm';
+      data[index].dimensions2 = w2 && h2 ? `${w2} x ${h2} ${u}` : '-';
+    }
+
+    await writeDB(data);
+    res.json({
+      message: 'Data media promo berhasil diperbarui!',
+      data: data[index]
+    });
+  } catch (error) {
+    console.error('Error updating promo entry with photo:', error);
     res.status(500).json({ message: 'Gagal memperbarui data: ' + error.message });
   }
 });
@@ -590,7 +689,7 @@ app.get('/api/users', async (req, res) => {
 // Create new user (admin only)
 app.post('/api/users', async (req, res) => {
   try {
-    const { username, password, name, assignedProvinceId, assignedProvinceName, assignedRegencyId, assignedRegencyName } = req.body;
+    const { username, password, name, assignedProvinceId, assignedProvinceName, assignedRegencyId, assignedRegencyName, assignedMediaTypes } = req.body;
     
     if (!username || !password || !name) {
       return res.status(400).json({ message: 'Username, password, dan nama wajib diisi!' });
@@ -612,7 +711,8 @@ app.post('/api/users', async (req, res) => {
       assignedProvinceId: assignedProvinceId || '',
       assignedProvinceName: assignedProvinceName || 'Semua',
       assignedRegencyId: assignedRegencyId || '',
-      assignedRegencyName: assignedRegencyName || 'Semua'
+      assignedRegencyName: assignedRegencyName || 'Semua',
+      assignedMediaTypes: Array.isArray(assignedMediaTypes) ? assignedMediaTypes : []
     };
 
     users.push(newUser);
@@ -629,7 +729,7 @@ app.post('/api/users', async (req, res) => {
 app.put('/api/users/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const { username, password, name, assignedProvinceId, assignedProvinceName, assignedRegencyId, assignedRegencyName } = req.body;
+    const { username, password, name, assignedProvinceId, assignedProvinceName, assignedRegencyId, assignedRegencyName, assignedMediaTypes } = req.body;
     
     if (id === 'user-admin') {
       return res.status(400).json({ message: 'Akun Administrator utama tidak boleh diedit!' });
@@ -657,6 +757,9 @@ app.put('/api/users/:id', async (req, res) => {
     if (assignedProvinceName !== undefined) users[index].assignedProvinceName = assignedProvinceName;
     if (assignedRegencyId !== undefined) users[index].assignedRegencyId = assignedRegencyId;
     if (assignedRegencyName !== undefined) users[index].assignedRegencyName = assignedRegencyName;
+    if (assignedMediaTypes !== undefined && Array.isArray(assignedMediaTypes)) {
+      users[index].assignedMediaTypes = assignedMediaTypes;
+    }
 
     await writeUsers(users);
 

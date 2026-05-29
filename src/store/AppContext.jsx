@@ -3,6 +3,7 @@ import { useOnlineStatus } from '../hooks/useOnlineStatus';
 import { dbService } from '../services/dbService';
 import { api } from '../services/api';
 import { logger } from '../utils/logger';
+import { MEDIA_TYPES } from '../constants';
 
 const AppContext = createContext();
 
@@ -22,6 +23,7 @@ export function AppProvider({ children }) {
 
   const [items, setItems] = useState([]);
   const [stats, setStats] = useState(null);
+  const [mediaTypes, setMediaTypes] = useState(MEDIA_TYPES);
   const [isLoading, setIsLoading] = useState(false);
   const [toasts, setToasts] = useState([]);
   const [syncQueueCount, setSyncQueueCount] = useState(0);
@@ -72,12 +74,16 @@ export function AppProvider({ children }) {
     if (!currentUser) return;
     setIsLoading(true);
     try {
-      const [itemsData, statsData] = await Promise.all([
+      const [itemsData, statsData, mediaTypesData] = await Promise.all([
         api.getPromoMedia(currentUser),
-        api.getStats(currentUser)
+        api.getStats(currentUser),
+        api.getMediaTypes().catch(() => MEDIA_TYPES) // fallback
       ]);
       setItems(itemsData);
       setStats(statsData);
+      if (mediaTypesData && mediaTypesData.length > 0) {
+        setMediaTypes(mediaTypesData);
+      }
       try {
         await dbService.cachePromos(itemsData);
       } catch (dbErr) {
@@ -200,6 +206,8 @@ export function AppProvider({ children }) {
       setItems,
       stats,
       setStats,
+      mediaTypes,
+      setMediaTypes,
       isLoading,
       setIsLoading,
       isOnline,

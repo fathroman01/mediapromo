@@ -1,1 +1,12 @@
 /* Custom styles are defined in index.css */
+
+/* Ensure store name wraps on mobile */
+.date-column {
+  display: flex;
+}
+
+@media (max-width: 600px) {
+  .date-column {
+    display: none;
+  }
+}

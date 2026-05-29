@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { PlusCircle, Trash2, Shield, User, X, Pencil } from 'lucide-react';
 import { useApp } from '../store/AppContext';
+import { MEDIA_TYPES } from '../constants';
 import { api } from '../services/api';
 
 export default function UserManagementPage({ onBack }) {
@@ -16,6 +17,7 @@ export default function UserManagementPage({ onBack }) {
   const [tempProvince, setTempProvince] = useState({ id: '', name: '' });
   const [tempRegency, setTempRegency] = useState({ id: '', name: '' });
   const [editUserId, setEditUserId] = useState(null);
+  const [selectedMediaTypes, setSelectedMediaTypes] = useState([]);
 
   const [adminProvList, setAdminProvList] = useState([]);
   const [adminRegList, setAdminRegList] = useState([]);
@@ -137,7 +139,8 @@ export default function UserManagementPage({ onBack }) {
       assignedProvinceId,
       assignedProvinceName,
       assignedRegencyId,
-      assignedRegencyName
+      assignedRegencyName,
+      assignedMediaTypes: selectedMediaTypes
     };
     if (newUserData.password && newUserData.password.trim() !== '') {
       payload.password = newUserData.password;
@@ -159,6 +162,7 @@ export default function UserManagementPage({ onBack }) {
         name: ''
       });
       setSelectedRegencies([]);
+      setSelectedMediaTypes([]);
       setTempProvince({ id: '', name: '' });
       setTempRegency({ id: '', name: '' });
       setAdminRegList([]);
@@ -189,6 +193,7 @@ export default function UserManagementPage({ onBack }) {
     }));
 
     setSelectedRegencies(parsed);
+    setSelectedMediaTypes(user.assignedMediaTypes || []);
     setTempProvince({ id: '', name: '' });
     setTempRegency({ id: '', name: '' });
     setShowAddUserModal(true);
@@ -220,7 +225,7 @@ export default function UserManagementPage({ onBack }) {
       <div className="glass-card">
       <div className="table-controls" style={{ marginBottom: '1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
         <div>
-          <h3 style={{ fontSize: '1.2rem', color: 'white', fontFamily: 'var(--font-display)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <h3 style={{ fontSize: '1.2rem', color: 'var(--text-main)', fontFamily: 'var(--font-display)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             Manajemen Akses Wilayah & Petugas
           </h3>
           <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: 0 }}>
@@ -302,14 +307,14 @@ export default function UserManagementPage({ onBack }) {
 
     {/* Modal: Tambah/Edit Petugas (Admin Only) */}
     {showAddUserModal && (
-        <div className="modal-overlay" onClick={() => { setShowAddUserModal(false); setEditUserId(null); setSelectedRegencies([]); setTempProvince({ id: '', name: '' }); setTempRegency({ id: '', name: '' }); }}>
+        <div className="modal-overlay" onClick={() => { setShowAddUserModal(false); setEditUserId(null); setSelectedRegencies([]); setSelectedMediaTypes([]); setTempProvince({ id: '', name: '' }); setTempRegency({ id: '', name: '' }); }}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '500px' }}>
             <div className="modal-header">
               <h3 className="modal-title" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                 {editUserId ? <Pencil size={20} color="var(--color-primary)" /> : <PlusCircle size={20} color="var(--color-primary)" />} 
                 {editUserId ? 'Edit Petugas Lapangan' : 'Daftarkan Petugas Baru'}
               </h3>
-              <button className="modal-close" onClick={() => { setShowAddUserModal(false); setEditUserId(null); setSelectedRegencies([]); setTempProvince({ id: '', name: '' }); setTempRegency({ id: '', name: '' }); }}><X size={18} /></button>
+              <button className="modal-close" onClick={() => { setShowAddUserModal(false); setEditUserId(null); setSelectedRegencies([]); setSelectedMediaTypes([]); setTempProvince({ id: '', name: '' }); setTempRegency({ id: '', name: '' }); }}><X size={18} /></button>
             </div>
             <div className="modal-body">
               <form onSubmit={handleAddUserSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
@@ -350,7 +355,7 @@ export default function UserManagementPage({ onBack }) {
                 </div>
 
                 <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '1rem', marginTop: '0.5rem' }}>
-                  <h4 style={{ fontSize: '0.9rem', color: 'white', marginBottom: '0.75rem' }}>Hak Akses Wilayah Kerja</h4>
+                  <h4 style={{ fontSize: '0.9rem', color: 'var(--text-main)', marginBottom: '0.75rem' }}>Hak Akses Wilayah Kerja</h4>
                   
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', alignItems: 'end' }}>
                     {/* Provinsi */}
@@ -452,7 +457,19 @@ export default function UserManagementPage({ onBack }) {
                   <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.5rem' }}>
                     * Petugas ini hanya akan diizinkan mendata dan melihat data promo pada wilayah Kabupaten / Kota di atas.
                   </span>
-                </div>
+                {/* Media Types Selection */}
+<div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '1rem', marginTop: '0.5rem' }}>
+  <h4 style={{ fontSize: '0.9rem', color: 'var(--text-main)', marginBottom: '0.75rem' }}>Tipe Media Promo yang Diaktifkan</h4>
+  <div className="media-types-checkboxes" style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+    {MEDIA_TYPES.map(type => (
+      <label key={type} className="checkbox-label" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+        <input type="checkbox" checked={selectedMediaTypes.includes(type)} onChange={() => setSelectedMediaTypes(prev => prev.includes(type) ? prev.filter(t => t !== type) : [...prev, type])} />
+        {type}
+      </label>
+    ))}
+  </div>
+</div>
+</div>
 
                 <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '1rem', borderTop: '1px solid var(--border-color)', paddingTop: '1rem' }}>
                   <button type="button" className="btn btn-secondary" onClick={() => { setShowAddUserModal(false); setEditUserId(null); setSelectedRegencies([]); setTempProvince({ id: '', name: '' }); setTempRegency({ id: '', name: '' }); }}>Batal</button>

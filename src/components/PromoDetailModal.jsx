@@ -131,13 +131,7 @@ export default function PromoDetailModal({ promo, onClose }) {
               </span>
             </div>
 
-            <div className="info-item">
-              <span className="info-label"><Layers size={12} style={{ marginRight: '4px', verticalAlign: 'text-bottom' }} /> Dimensi</span>
-              <span className="info-val" style={{ color: 'var(--text-main)' }}>
-                {promo.dimensions || '-'}
-                {promo.hasSecondMedia && promo.mediaType2 && ` (Kedua: ${promo.dimensions2 || '-'})`}
-              </span>
-            </div>
+
 
             <div className="info-item">
               <span className="info-label"><Calendar size={12} style={{ marginRight: '4px', verticalAlign: 'text-bottom' }} /> Tanggal Pemasangan</span>

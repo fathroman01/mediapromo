@@ -6,58 +6,147 @@ import { api } from '../services/api';
 import { dbService } from '../services/dbService';
 import { useApp } from '../store/AppContext';
 import { validatePromo } from '../validators';
-import { MEDIA_TYPES, CONDITIONS } from '../constants';
+import { CONDITIONS } from '../constants';
 
-export default function PromoForm({ onSaveSuccess, currentUser }) {
-  const { isOnline, addToast, updateQueueCount } = useApp();
+export default function PromoForm({ onSaveSuccess, currentUser, promoToEdit, onCancel }) {
+  const { isOnline, addToast, updateQueueCount, mediaTypes } = useApp();
+
+  const allowedMediaTypes = currentUser?.role === 'officer' && Array.isArray(currentUser.assignedMediaTypes) && currentUser.assignedMediaTypes.length > 0
+    ? mediaTypes.filter(type => currentUser.assignedMediaTypes.includes(type))
+    : mediaTypes;
   const [formData, setFormData] = useState({
-    outletName: '',
-    address: '',
-    reporterName: '',
-    mediaType: 'Banner',
-    width: '',
-    height: '',
-    unit: 'cm',
-    quantity: 1,
-    hasSecondMedia: false,
-    mediaType2: 'Banner',
-    width2: '',
-    height2: '',
-    quantity2: 0,
-    condition: 'Good',
-    installationDate: new Date().toISOString().split('T')[0],
-    expiryDate: '',
-    latitude: '',
-    longitude: '',
-    notes: '',
-    province: '',
-    regency: '',
-    district: '',
-    village: ''
+    outletName: promoToEdit?.outletName || '',
+    address: promoToEdit?.address || '',
+    reporterName: promoToEdit?.reporterName || '',
+    mediaType: promoToEdit?.mediaType || 'Banner',
+    width: promoToEdit?.width !== undefined && promoToEdit?.width !== null ? promoToEdit.width : '',
+    height: promoToEdit?.height !== undefined && promoToEdit?.height !== null ? promoToEdit.height : '',
+    unit: promoToEdit?.unit || 'cm',
+    quantity: promoToEdit?.quantity || 1,
+    hasSecondMedia: promoToEdit?.hasSecondMedia || false,
+    mediaType2: promoToEdit?.mediaType2 || 'Banner',
+    width2: promoToEdit?.width2 !== undefined && promoToEdit?.width2 !== null ? promoToEdit.width2 : '',
+    height2: promoToEdit?.height2 !== undefined && promoToEdit?.height2 !== null ? promoToEdit.height2 : '',
+    quantity2: promoToEdit?.quantity2 || 0,
+    condition: promoToEdit?.condition || 'Good',
+    installationDate: promoToEdit?.installationDate || new Date().toISOString().split('T')[0],
+    expiryDate: promoToEdit?.expiryDate || '',
+    latitude: promoToEdit?.latitude !== undefined && promoToEdit?.latitude !== null ? promoToEdit.latitude : '',
+    longitude: promoToEdit?.longitude !== undefined && promoToEdit?.longitude !== null ? promoToEdit.longitude : '',
+    notes: promoToEdit?.notes || '',
+    province: promoToEdit?.province || '',
+    regency: promoToEdit?.regency || '',
+    district: promoToEdit?.district || '',
+    village: promoToEdit?.village || ''
   });
 
-  const [mediaSelections, setMediaSelections] = useState(
-    Object.fromEntries(MEDIA_TYPES.map(t => [t, { active: false, width: '', height: '', quantity: 1 }]))
-  );
+  const [mediaSelections, setMediaSelections] = useState({});
+
+  useEffect(() => {
+    if (promoToEdit) {
+      setFormData({
+        outletName: promoToEdit.outletName || '',
+        address: promoToEdit.address || '',
+        reporterName: promoToEdit.reporterName || '',
+        mediaType: promoToEdit.mediaType || 'Banner',
+        width: promoToEdit.width !== undefined && promoToEdit.width !== null ? promoToEdit.width : '',
+        height: promoToEdit.height !== undefined && promoToEdit.height !== null ? promoToEdit.height : '',
+        unit: promoToEdit.unit || 'cm',
+        quantity: promoToEdit.quantity || 1,
+        hasSecondMedia: promoToEdit.hasSecondMedia || false,
+        mediaType2: promoToEdit.mediaType2 || 'Banner',
+        width2: promoToEdit.width2 !== undefined && promoToEdit.width2 !== null ? promoToEdit.width2 : '',
+        height2: promoToEdit.height2 !== undefined && promoToEdit.height2 !== null ? promoToEdit.height2 : '',
+        quantity2: promoToEdit.quantity2 || 0,
+        condition: promoToEdit.condition || 'Good',
+        installationDate: promoToEdit.installationDate || '',
+        expiryDate: promoToEdit.expiryDate || '',
+        latitude: promoToEdit.latitude !== undefined && promoToEdit.latitude !== null ? promoToEdit.latitude : '',
+        longitude: promoToEdit.longitude !== undefined && promoToEdit.longitude !== null ? promoToEdit.longitude : '',
+        notes: promoToEdit.notes || '',
+        province: promoToEdit.province || '',
+        regency: promoToEdit.regency || '',
+        district: promoToEdit.district || '',
+        village: promoToEdit.village || ''
+      });
+      if (promoToEdit.photoUrl) {
+        setPhotoPreview(promoToEdit.photoUrl);
+      }
+    }
+  }, [promoToEdit]);
+
+  useEffect(() => {
+    setMediaSelections(prev => {
+      const next = { ...prev };
+      mediaTypes.forEach(t => {
+        if (!next[t]) {
+          next[t] = { active: false, width: '', height: '', quantity: 1 };
+        }
+      });
+      if (promoToEdit) {
+        // Reset active state first
+        Object.keys(next).forEach(k => {
+          next[k] = { ...next[k], active: false };
+        });
+
+        if (Array.isArray(promoToEdit.mediaItems) && promoToEdit.mediaItems.length > 0) {
+          promoToEdit.mediaItems.forEach(item => {
+            if (item.type) {
+              next[item.type] = {
+                active: true,
+                width: item.width !== undefined && item.width !== null ? item.width : '',
+                height: item.height !== undefined && item.height !== null ? item.height : '',
+                quantity: item.quantity || 1
+              };
+            }
+          });
+        } else {
+          if (promoToEdit.mediaType) {
+            next[promoToEdit.mediaType] = {
+              active: true,
+              width: promoToEdit.width !== undefined && promoToEdit.width !== null ? promoToEdit.width : '',
+              height: promoToEdit.height !== undefined && promoToEdit.height !== null ? promoToEdit.height : '',
+              quantity: promoToEdit.quantity || 1
+            };
+          }
+          if (promoToEdit.hasSecondMedia && promoToEdit.mediaType2) {
+            next[promoToEdit.mediaType2] = {
+              active: true,
+              width: promoToEdit.width2 !== undefined && promoToEdit.width2 !== null ? promoToEdit.width2 : '',
+              height: promoToEdit.height2 !== undefined && promoToEdit.height2 !== null ? promoToEdit.height2 : '',
+              quantity: promoToEdit.quantity2 || 0
+            };
+          }
+        }
+      }
+      return next;
+    });
+  }, [mediaTypes, promoToEdit]);
 
   const handleMediaToggle = (type) => {
-    setMediaSelections(prev => ({
-      ...prev,
-      [type]: {
-        ...prev[type],
-        active: !prev[type].active
-      }
-    }));
+    setMediaSelections(prev => {
+      const current = prev[type] || { active: false, width: '', height: '', quantity: 1 };
+      return {
+        ...prev,
+        [type]: {
+          ...current,
+          active: !current.active
+        }
+      };
+    });
   };
 
   const handleMediaValChange = (type, field, val) => {
-    setMediaSelections(prev => ({
-      ...prev,
-      [type]: {
-        ...prev[type],
-        [field]: val
-      }
-    }));
+    setMediaSelections(prev => {
+      const current = prev[type] || { active: false, width: '', height: '', quantity: 1 };
+      return {
+        ...prev,
+        [type]: {
+          ...current,
+          [field]: val
+        }
+      };
+    });
   };
 
   // State lists loaded from API
@@ -221,6 +310,61 @@ export default function PromoForm({ onSaveSuccess, currentUser }) {
       }));
     }
   }, [currentUser]);
+
+  useEffect(() => {
+    if (promoToEdit && regenciesList.length > 0) {
+      const fetchDistrictsForEdit = async () => {
+        const cleanRegName = (promoToEdit.regency || '').replace(/^KAB\.\b/gi, 'KABUPATEN').toUpperCase();
+        const foundReg = regenciesList.find(r => {
+          const nameA = r.name.toUpperCase();
+          const nameB = cleanRegName;
+          return nameA === nameB || nameA.replace(/^KABUPATEN\b/gi, 'KAB.') === nameB;
+        });
+        
+        if (foundReg) {
+          setSelectedIds(prev => ({
+            ...prev,
+            provinceId: foundReg.provinceId || '',
+            regencyId: foundReg.id
+          }));
+
+          setLoadingGeo(prev => ({ ...prev, districts: true }));
+          try {
+            const res = await fetch(`https://www.emsifa.com/api-wilayah-indonesia/api/districts/${foundReg.id}.json`);
+            if (res.ok) {
+              const districtsData = await res.json();
+              const sortedDistricts = districtsData.sort((a, b) => a.name.localeCompare(b.name));
+              setDistrictsList(sortedDistricts);
+              
+              const cleanDistName = (promoToEdit.district || '').toUpperCase();
+              const foundDist = sortedDistricts.find(d => d.name.toUpperCase() === cleanDistName);
+              if (foundDist) {
+                setSelectedIds(prev => ({
+                  ...prev,
+                  districtId: foundDist.id
+                }));
+
+                setLoadingGeo(prev => ({ ...prev, villages: true }));
+                const vilRes = await fetch(`https://www.emsifa.com/api-wilayah-indonesia/api/villages/${foundDist.id}.json`);
+                if (vilRes.ok) {
+                  const villagesData = await vilRes.json();
+                  setVillagesList(villagesData.sort((a, b) => a.name.localeCompare(b.name)));
+                }
+              }
+            }
+          } catch (err) {
+            console.error('Gagal memuat kecamatan/desa offline saat edit:', err);
+            setGeoOfflineMode({ district: true, village: true });
+          } finally {
+            setLoadingGeo(prev => ({ ...prev, districts: false, villages: false }));
+          }
+        } else {
+          setGeoOfflineMode({ district: true, village: true });
+        }
+      };
+      fetchDistrictsForEdit();
+    }
+  }, [promoToEdit, regenciesList]);
 
   const handleProvinceChange = async (e) => {
     const provId = e.target.value;
@@ -606,7 +750,7 @@ export default function PromoForm({ onSaveSuccess, currentUser }) {
   const handleSubmit = async (e) => {
     e.preventDefault();
     
-    const activeMediaTypes = MEDIA_TYPES.filter(key => mediaSelections[key]?.active);
+    const activeMediaTypes = allowedMediaTypes.filter(key => mediaSelections[key]?.active);
     const validationError = validatePromo(formData, activeMediaTypes);
     if (validationError) {
       setErrorMsg(validationError);
@@ -628,22 +772,24 @@ export default function PromoForm({ onSaveSuccess, currentUser }) {
     }
 
     // Structure the data to send
+    const firstMedia = activeMediaTypes[0] ? (mediaSelections[activeMediaTypes[0]] || { width: '', height: '', quantity: 1 }) : null;
     const cleanPayload = {
       ...formData,
       installationTime: new Date().toLocaleTimeString('id-ID', { hour12: false }), // Mencatat jam saat ini secara otomatis (format HH:mm:ss)
-      mediaType: activeMediaTypes[0],
-      width: mediaSelections[activeMediaTypes[0]].width || '',
-      height: mediaSelections[activeMediaTypes[0]].height || '',
-      quantity: mediaSelections[activeMediaTypes[0]].quantity || 1,
+      mediaType: activeMediaTypes[0] || '',
+      width: firstMedia?.width || '',
+      height: firstMedia?.height || '',
+      quantity: firstMedia?.quantity || 1,
     };
 
     if (activeMediaTypes.length > 1) {
       const type2 = activeMediaTypes[1];
+      const secondMedia = mediaSelections[type2] || { width: '', height: '', quantity: 1 };
       cleanPayload.hasSecondMedia = true;
       cleanPayload.mediaType2 = type2;
-      cleanPayload.width2 = mediaSelections[type2].width || '';
-      cleanPayload.height2 = mediaSelections[type2].height || '';
-      cleanPayload.quantity2 = mediaSelections[type2].quantity || 1;
+      cleanPayload.width2 = secondMedia.width || '';
+      cleanPayload.height2 = secondMedia.height || '';
+      cleanPayload.quantity2 = secondMedia.quantity || 1;
     } else {
       cleanPayload.hasSecondMedia = false;
       cleanPayload.mediaType2 = '';
@@ -653,17 +799,25 @@ export default function PromoForm({ onSaveSuccess, currentUser }) {
     }
 
     // Prepare full media items as JSON
-    const mediaItems = activeMediaTypes.map(t => ({
-      type: t,
-      quantity: mediaSelections[t].quantity || 1,
-      width: mediaSelections[t].width || '',
-      height: mediaSelections[t].height || ''
-    }));
+    const mediaItems = activeMediaTypes.map(t => {
+      const mSel = mediaSelections[t] || { quantity: 1, width: '', height: '' };
+      return {
+        type: t,
+        quantity: mSel.quantity || 1,
+        width: mSel.width || '',
+        height: mSel.height || ''
+      };
+    });
     cleanPayload.mediaItems = mediaItems;
 
     // Handle OFFLINE submission
     if (!isOnline) {
       try {
+        if (promoToEdit) {
+          addToast('Edit data dalam mode offline belum didukung. Harap sambungkan ke internet.', 'error');
+          setIsSubmitting(false);
+          return;
+        }
         // Save to IndexedDB
         const offlineRecord = {
           ...cleanPayload,
@@ -705,12 +859,13 @@ export default function PromoForm({ onSaveSuccess, currentUser }) {
     }
 
     try {
+      const uploadUrl = promoToEdit ? `/api/promo-media/${promoToEdit.id}` : '/api/promo-media';
       await imageService.uploadWithProgress(submissionData, (percent) => {
         setUploadPercent(percent);
-      });
+      }, uploadUrl, 'POST');
 
       setSubmitStatus('success');
-      addToast('Pendataan media promo berhasil disimpan ke server!', 'success');
+      addToast(promoToEdit ? 'Data media promo berhasil diperbarui!' : 'Pendataan media promo berhasil disimpan ke server!', 'success');
       
       setTimeout(() => {
         if (onSaveSuccess) onSaveSuccess();
@@ -749,8 +904,12 @@ export default function PromoForm({ onSaveSuccess, currentUser }) {
         <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '1.5rem' }}>
           <CheckCircle size={64} color="var(--color-success)" style={{ filter: 'drop-shadow(0 0 10px rgba(16,185,129,0.4))' }} />
         </div>
-        <h2 style={{ fontFamily: 'var(--font-display)', color: 'white', marginBottom: '0.75rem' }}>Data Berhasil Disimpan!</h2>
-        <p style={{ color: 'var(--text-muted)' }}>Pendataan media promo telah ditambahkan ke sistem.</p>
+        <h2 style={{ fontFamily: 'var(--font-display)', color: 'white', marginBottom: '0.75rem' }}>
+          {promoToEdit ? 'Data Berhasil Diperbarui!' : 'Data Berhasil Disimpan!'}
+        </h2>
+        <p style={{ color: 'var(--text-muted)' }}>
+          {promoToEdit ? 'Data media promo telah diperbarui.' : 'Pendataan media promo telah ditambahkan ke sistem.'}
+        </p>
       </div>
     );
   }
@@ -758,8 +917,15 @@ export default function PromoForm({ onSaveSuccess, currentUser }) {
   return (
     <>
       <div className="glass-card" style={{ background: 'transparent', border: 'none', padding: 0, boxShadow: 'none' }}>
-      <h2 className="card-title" style={{ paddingBottom: '1rem', borderBottom: '1px solid var(--border-color)', marginBottom: '1.5rem' }}>
-        <Camera size={20} color="var(--color-primary)" /> Input Data Media Promo
+      <h2 className="card-title" style={{ paddingBottom: '1rem', borderBottom: '1px solid var(--border-color)', marginBottom: '1.5rem', justifyContent: 'space-between', display: 'flex', alignItems: 'center' }}>
+        <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <Camera size={20} color="var(--color-primary)" /> {promoToEdit ? 'Edit Data Media Promo' : 'Input Data Media Promo'}
+        </span>
+        {onCancel && (
+          <button type="button" className="btn btn-secondary" style={{ padding: '0.35rem 0.75rem', fontSize: '0.78rem', borderRadius: '6px' }} onClick={onCancel}>
+            Batal
+          </button>
+        )}
       </h2>
       
       {errorMsg && (
@@ -847,8 +1013,8 @@ export default function PromoForm({ onSaveSuccess, currentUser }) {
 
                     if (isLockedOfficer) {
                       return (
-                        <option value={currentUser.assignedRegencyId}>
-                          {currentUser.assignedRegencyName.replace(/^KABUPATEN\b/gi, 'KAB.')}
+                        <option value={currentUser?.assignedRegencyId || ''}>
+                          {(currentUser?.assignedRegencyName || '').replace(/^KABUPATEN\b/gi, 'KAB.')}
                         </option>
                       );
                     } else {
@@ -1025,8 +1191,8 @@ export default function PromoForm({ onSaveSuccess, currentUser }) {
             </span>
 
             <div style={{ marginTop: '0.5rem', display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
-              {MEDIA_TYPES.map(type => {
-                const sel = mediaSelections[type];
+              {allowedMediaTypes.map(type => {
+                const sel = mediaSelections[type] || { active: false, width: '', height: '', quantity: 1 };
                 return (
                   <div 
                     key={type} 
@@ -1211,11 +1377,11 @@ export default function PromoForm({ onSaveSuccess, currentUser }) {
           >
             {isSubmitting ? (
               <>
-                <RefreshCw className="pulse-green" size={18} style={{ animation: 'spin 1s linear infinite' }} /> Menyimpan...
+                <RefreshCw className="pulse-green" size={18} style={{ animation: 'spin 1s linear infinite' }} /> {promoToEdit ? 'Memperbarui...' : 'Menyimpan...'}
               </>
             ) : (
               <>
-                <CheckCircle size={18} /> Simpan Pendataan
+                <CheckCircle size={18} /> {promoToEdit ? 'Perbarui Pendataan' : 'Simpan Pendataan'}
               </>
             )}
           </button>

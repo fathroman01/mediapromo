@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Layers, User, Shield, LogOut, QrCode, Smartphone, X, LayoutDashboard, PlusCircle, ClipboardList, Users } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import LoginPage from '../pages/LoginPage';
@@ -10,11 +10,125 @@ import ToastContainer from '../components/ToastContainer';
 import OfflineIndicator from '../components/OfflineIndicator';
 import InstallPrompt from '../components/InstallPrompt';
 import PromoDetailModal from '../components/PromoDetailModal';
+import MediaTypeManagementModal from '../components/MediaTypeManagementModal';
+import PromoForm from '../components/PromoForm';
+import { CONDITION_LABELS } from '../constants';
 
 export default function MainLayout() {
-  const { currentUser, activeTab, setActiveTab, logout, networkIpInfo } = useApp();
+  const { currentUser, activeTab, setActiveTab, logout, networkIpInfo, refreshAppData } = useApp();
   const [showQrModal, setShowQrModal] = useState(false);
+  const [showMediaTypeModal, setShowMediaTypeModal] = useState(false);
   const [selectedPromo, setSelectedPromo] = useState(null);
+  const [editingPromo, setEditingPromo] = useState(null);
+  const [previewPhoto, setPreviewPhoto] = useState(null);
+  
+  const touchStartX = useRef(null);
+  const touchStartY = useRef(null);
+
+  const handlePrevPhoto = () => {
+    if (!previewPhoto || !previewPhoto.promo) return;
+    const promo = previewPhoto.promo;
+    if (previewPhoto.type === 'Kondisi Terbaru' && promo.photoUrl) {
+      setPreviewPhoto({
+        url: promo.photoUrl,
+        type: 'Saat Terpasang',
+        promo: promo
+      });
+    } else if (previewPhoto.type === 'Saat Terpasang' && promo.conditionPhotoUrl) {
+      setPreviewPhoto({
+        url: promo.conditionPhotoUrl,
+        type: 'Kondisi Terbaru',
+        promo: promo
+      });
+    }
+  };
+
+  const handleNextPhoto = () => {
+    if (!previewPhoto || !previewPhoto.promo) return;
+    const promo = previewPhoto.promo;
+    if (previewPhoto.type === 'Saat Terpasang' && promo.conditionPhotoUrl) {
+      setPreviewPhoto({
+        url: promo.conditionPhotoUrl,
+        type: 'Kondisi Terbaru',
+        promo: promo
+      });
+    } else if (previewPhoto.type === 'Kondisi Terbaru' && promo.photoUrl) {
+      setPreviewPhoto({
+        url: promo.photoUrl,
+        type: 'Saat Terpasang',
+        promo: promo
+      });
+    }
+  };
+
+  const navigateToType = (type) => {
+    if (!previewPhoto || !previewPhoto.promo) return;
+    const promo = previewPhoto.promo;
+    if (type === 'Saat Terpasang' && promo.photoUrl) {
+      setPreviewPhoto({
+        url: promo.photoUrl,
+        type: 'Saat Terpasang',
+        promo: promo
+      });
+    } else if (type === 'Kondisi Terbaru' && promo.conditionPhotoUrl) {
+      setPreviewPhoto({
+        url: promo.conditionPhotoUrl,
+        type: 'Kondisi Terbaru',
+        promo: promo
+      });
+    }
+  };
+
+  const handleTouchStart = (e) => {
+    touchStartX.current = e.touches[0].clientX;
+    touchStartY.current = e.touches[0].clientY;
+  };
+
+  const handleTouchEnd = (e) => {
+    if (touchStartX.current === null || touchStartY.current === null) return;
+    const diffX = e.changedTouches[0].clientX - touchStartX.current;
+    const diffY = e.changedTouches[0].clientY - touchStartY.current;
+    
+    if (Math.abs(diffX) > Math.abs(diffY) && Math.abs(diffX) > 50) {
+      if (diffX > 0) {
+        handlePrevPhoto();
+      } else {
+        handleNextPhoto();
+      }
+    }
+    touchStartX.current = null;
+    touchStartY.current = null;
+  };
+
+  // Keyboard navigation for photo preview lightbox
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (!previewPhoto) return;
+      if (e.key === 'ArrowLeft') {
+        handlePrevPhoto();
+      } else if (e.key === 'ArrowRight') {
+        handleNextPhoto();
+      } else if (e.key === 'Escape') {
+        setPreviewPhoto(null);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [previewPhoto]);
+
+  // Lock body scroll when lightbox photo preview is open
+  useEffect(() => {
+    if (previewPhoto) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [previewPhoto]);
 
   // Auto scroll ke atas setiap kali ganti menu (tab)
   useEffect(() => {
@@ -48,14 +162,14 @@ export default function MainLayout() {
           <div>
             <h1 className="logo-title">Media Promo ST</h1>
             <div className="logo-subtitle">Pendataan & Pemantauan Media Promo</div>
-            <div className="header-region-text" style={{ fontSize: '0.9rem', fontWeight: '700', marginTop: '4px', letterSpacing: '0.01em' }}>
+            <div className="header-region-text" style={{ fontSize: '0.9rem', fontWeight: '700', marginTop: '1px', letterSpacing: '0.01em' }}>
               {currentUser.role === 'admin' ? 'Seluruh Wilayah' : (currentUser.assignedRegencyName ? currentUser.assignedRegencyName.split(',').map(name => name.replace(/^KABUPATEN\b/gi, 'Kab.').replace(/^KOTA\b/gi, 'Kota').replace(/\w\S*/g, (txt) => txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase())).join(', ') : '')}
             </div>
           </div>
 
-          {/* Profile Menu Icon next to text */}
+          {/* Profile Menu Icon next to text - Mobile Only */}
           <button 
-            className={`header-profile-btn ${activeTab === 'profile' ? 'active' : ''}`}
+            className={`header-profile-btn mobile-only-profile ${activeTab === 'profile' ? 'active' : ''}`}
             onClick={() => setActiveTab('profile')}
             title="Profil"
           >
@@ -94,8 +208,16 @@ export default function MainLayout() {
               <Users size={16} /> Petugas
             </button>
           )}
-
         </div>
+
+        {/* Profile Button - Desktop Only */}
+        <button 
+          className={`header-profile-btn desktop-only-profile ${activeTab === 'profile' ? 'active' : ''}`}
+          onClick={() => setActiveTab('profile')}
+          title="Profil"
+        >
+          <User size={20} />
+        </button>
       </header>
 
       {/* Wilayah Restriksi Banner for Officer */}
@@ -130,7 +252,7 @@ export default function MainLayout() {
       <main className="main-content" style={{ minHeight: '60vh', marginBottom: '4.5rem' }}>
         {activeTab === 'dashboard' && <DashboardPage onSelectDetails={setSelectedPromo} />}
         {activeTab === 'form' && <InputPage />}
-        {activeTab === 'table' && <DataPage onSelectDetails={setSelectedPromo} />}
+        {activeTab === 'table' && <DataPage onSelectDetails={setSelectedPromo} onEditItem={setEditingPromo} onPreviewPhoto={setPreviewPhoto} />}
         {currentUser?.role === 'admin' && activeTab === 'users' && <UserManagementPage onBack={() => setActiveTab('profile')} />}
         
         {activeTab === 'profile' && (
@@ -171,25 +293,47 @@ export default function MainLayout() {
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', width: '100%', marginTop: '0.5rem' }}>
                 {currentUser.role === 'admin' && (
-                  <button 
-                    onClick={() => setActiveTab('users')} 
-                    className="btn btn-secondary mobile-only-btn" 
-                    style={{ 
-                      width: '100%',
-                      padding: '0.65rem', 
-                      borderRadius: '8px', 
-                      gap: '6px', 
-                      fontSize: '0.85rem', 
-                      border: '1px solid var(--border-color)',
-                      background: 'rgba(37, 99, 235, 0.05)',
-                      color: 'var(--color-primary)',
-                      fontWeight: '600',
-                      justifyContent: 'center',
-                      alignItems: 'center'
-                    }}
-                  >
-                    <Users size={14} color="var(--color-primary)" /> Kelola Petugas Lapangan
-                  </button>
+                  <>
+                    <button 
+                      onClick={() => setActiveTab('users')} 
+                      className="btn btn-secondary mobile-only-btn" 
+                      style={{ 
+                        width: '100%',
+                        padding: '0.65rem', 
+                        borderRadius: '8px', 
+                        gap: '6px', 
+                        fontSize: '0.85rem', 
+                        border: '1px solid var(--border-color)',
+                        background: 'rgba(37, 99, 235, 0.05)',
+                        color: 'var(--color-primary)',
+                        fontWeight: '600',
+                        justifyContent: 'center',
+                        alignItems: 'center'
+                      }}
+                    >
+                      <Users size={14} color="var(--color-primary)" /> Kelola Petugas Lapangan
+                    </button>
+                    
+                    <button 
+                      onClick={() => setShowMediaTypeModal(true)} 
+                      className="btn btn-secondary" 
+                      style={{ 
+                        width: '100%',
+                        padding: '0.65rem', 
+                        borderRadius: '8px', 
+                        gap: '6px', 
+                        fontSize: '0.85rem', 
+                        border: '1px solid var(--border-color)',
+                        background: 'rgba(37, 99, 235, 0.05)',
+                        color: 'var(--color-primary)',
+                        fontWeight: '600',
+                        justifyContent: 'center',
+                        alignItems: 'center'
+                      }}
+                    >
+                      <Layers size={14} color="var(--color-primary)" /> Kelola Tipe Media Promo
+                    </button>
+                  </>
                 )}
 
                 <button 
@@ -219,6 +363,30 @@ export default function MainLayout() {
       {/* Global Details Modal */}
       {selectedPromo && (
         <PromoDetailModal promo={selectedPromo} onClose={() => setSelectedPromo(null)} />
+      )}
+
+      {/* Global Edit Modal */}
+      {editingPromo && (
+        <div className="modal-overlay" onClick={() => setEditingPromo(null)} style={{ zIndex: 1010 }}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '800px', width: '95%', maxHeight: '90vh', overflowY: 'auto' }}>
+            <div className="modal-body" style={{ padding: '1.5rem' }}>
+              <PromoForm 
+                promoToEdit={editingPromo} 
+                onSaveSuccess={() => {
+                  setEditingPromo(null);
+                  refreshAppData();
+                }} 
+                currentUser={currentUser} 
+                onCancel={() => setEditingPromo(null)}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Media Type Management Modal */}
+      {showMediaTypeModal && (
+        <MediaTypeManagementModal onClose={() => setShowMediaTypeModal(false)} />
       )}
 
       {/* Modal: Connect Phone QR Code */}
@@ -296,6 +464,146 @@ export default function MainLayout() {
       <ToastContainer />
       <OfflineIndicator />
       <InstallPrompt />
+
+      {/* Global Photo Preview Lightbox Modal */}
+      {(() => {
+        if (!previewPhoto) return null;
+        const promo = previewPhoto.promo;
+        const cond = promo ? (CONDITION_LABELS[promo.condition] || { text: promo.condition, color: 'var(--text-muted)', bg: 'transparent' }) : null;
+        const hasMultiplePhotos = promo && promo.photoUrl && promo.conditionPhotoUrl;
+        
+        return (
+          <div 
+            onClick={() => setPreviewPhoto(null)}
+            className="lightbox-overlay"
+          >
+            {/* Close Button - Fixed to Top-Right of Viewport */}
+            <button
+              onClick={() => setPreviewPhoto(null)}
+              className="lightbox-close-btn"
+            >
+              <X size={22} />
+            </button>
+
+            {/* Centered Image Container with Touch events */}
+            <div 
+              onClick={e => e.stopPropagation()}
+              className="lightbox-content"
+              onTouchStart={handleTouchStart}
+              onTouchEnd={handleTouchEnd}
+            >
+              {/* Photo Frame Container */}
+              <div className="lightbox-image-frame">
+                {/* Image */}
+                <img 
+                  src={previewPhoto.url} 
+                  alt={previewPhoto.title || (promo ? promo.outletName : 'Preview')}
+                  onError={e => { e.target.src = '/uploads/placeholder-media.jpg'; }}
+                  className="lightbox-image"
+                />
+
+                {/* Pagination Dots overlaying the bottom of the photo */}
+                {hasMultiplePhotos && (
+                  <div className="lightbox-dots">
+                    <span 
+                      className={`lightbox-dot ${previewPhoto.type === 'Saat Terpasang' ? 'active' : ''}`} 
+                      onClick={(e) => { e.stopPropagation(); navigateToType('Saat Terpasang'); }} 
+                      title="Foto Saat Terpasang"
+                    />
+                    <span 
+                      className={`lightbox-dot ${previewPhoto.type === 'Kondisi Terbaru' ? 'active' : ''}`} 
+                      onClick={(e) => { e.stopPropagation(); navigateToType('Kondisi Terbaru'); }} 
+                      title="Foto Kondisi Terbaru"
+                    />
+                  </div>
+                )}
+              </div>
+
+              {/* Glass Metadata Card */}
+              {promo ? (
+                <div className="lightbox-meta-card">
+                  {previewPhoto.type === 'Saat Terpasang' ? (
+                    <>
+                      {/* Badge */}
+                      <div style={{ display: 'flex', alignItems: 'center' }}>
+                        <span style={{ 
+                          fontSize: '0.68rem', 
+                          fontWeight: '700', 
+                          textTransform: 'uppercase', 
+                          letterSpacing: '0.05em',
+                          color: '#60a5fa', 
+                          background: 'rgba(37, 99, 235, 0.15)',
+                          padding: '2px 8px',
+                          borderRadius: '999px',
+                          border: '1px solid rgba(37, 99, 235, 0.25)'
+                        }}>
+                          {previewPhoto.type}
+                        </span>
+                      </div>
+                      
+                      {/* Outlet Name */}
+                      <div style={{ fontSize: '1.05rem', fontWeight: '700', color: '#ffffff', fontFamily: 'var(--font-display)', marginTop: '4px' }}>
+                        {promo.outletName}
+                      </div>
+
+                      {/* Installation Date Row */}
+                      <div style={{ display: 'flex', gap: '0.75rem', fontSize: '0.75rem', color: 'var(--text-muted)', flexWrap: 'wrap', marginTop: '2px', borderTop: '1px solid rgba(255, 255, 255, 0.06)', paddingTop: '0.35rem' }}>
+                        <span><strong>Tanggal Pemasangan:</strong> {promo.installationDate ? promo.installationDate.split('-').reverse().join('-') : '-'}</span>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      {/* Badge */}
+                      <div style={{ display: 'flex', alignItems: 'center' }}>
+                        <span style={{ 
+                          fontSize: '0.68rem', 
+                          fontWeight: '700', 
+                          textTransform: 'uppercase', 
+                          letterSpacing: '0.05em',
+                          color: '#60a5fa', 
+                          background: 'rgba(37, 99, 235, 0.15)',
+                          padding: '2px 8px',
+                          borderRadius: '999px',
+                          border: '1px solid rgba(37, 99, 235, 0.25)'
+                        }}>
+                          {previewPhoto.type}
+                        </span>
+                      </div>
+                      
+                      {/* Outlet Name */}
+                      <div style={{ fontSize: '1.05rem', fontWeight: '700', color: '#ffffff', fontFamily: 'var(--font-display)', marginTop: '4px' }}>
+                        {promo.outletName}
+                      </div>
+
+                      {/* Metadata Row: Kondisi & Tanggal Update */}
+                      <div style={{ display: 'flex', gap: '0.75rem', fontSize: '0.75rem', color: 'var(--text-muted)', flexWrap: 'wrap', marginTop: '2px', borderTop: '1px solid rgba(255, 255, 255, 0.06)', paddingTop: '0.35rem', alignItems: 'center' }}>
+                        <span style={{ 
+                          fontSize: '0.68rem', 
+                          fontWeight: '700', 
+                          padding: '2px 8px',
+                          borderRadius: '999px',
+                          background: cond.bg,
+                          color: cond.color,
+                          border: '1px solid rgba(255, 255, 255, 0.05)'
+                        }}>
+                          Kondisi: {cond.text}
+                        </span>
+                        <span>·</span>
+                        <span><strong>Tanggal Update:</strong> {promo.conditionModifiedAt ? new Date(promo.conditionModifiedAt).toLocaleDateString('id-ID', { day: '2-digit', month: '2-digit', year: 'numeric' }).replace(/\//g, '-') : '-'}</span>
+                      </div>
+                    </>
+                  )}
+                </div>
+              ) : (
+                /* Fallback Title Card */
+                <div className="lightbox-fallback-card">
+                  {previewPhoto.title}
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }

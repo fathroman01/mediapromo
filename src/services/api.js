@@ -162,6 +162,14 @@ export const api = {
     return res.json();
   },
 
+  async updatePromo(id, formData) {
+    const res = await fetchWithRetry(`/api/promo-media/${id}`, {
+      method: 'POST',
+      body: formData
+    }, 2, 1000);
+    return res.json();
+  },
+
   async deletePromo(id) {
     const res = await fetchWithRetry(`/api/promo-media/${id}`, {
       method: 'DELETE'
@@ -194,6 +202,27 @@ export const api = {
 
   async deleteUser(id) {
     const res = await fetchWithRetry(`/api/users/${id}`, {
+      method: 'DELETE'
+    }, 1, 1000);
+    return res.json();
+  },
+
+  async getMediaTypes() {
+    const res = await fetchWithRetry('/api/media-types', {}, 2, 500);
+    return res.json();
+  },
+
+  async addMediaType(name) {
+    const res = await fetchWithRetry('/api/media-types', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name })
+    }, 1, 1000);
+    return res.json();
+  },
+
+  async deleteMediaType(name) {
+    const res = await fetchWithRetry(`/api/media-types/${encodeURIComponent(name)}`, {
       method: 'DELETE'
     }, 1, 1000);
     return res.json();

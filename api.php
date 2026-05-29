@@ -226,7 +226,8 @@ if ($route === 'media-types' && $method === 'GET') {
             "assignedProvinceId" => isset($input['assignedProvinceId']) ? $input['assignedProvinceId'] : '',
             "assignedProvinceName" => isset($input['assignedProvinceName']) ? $input['assignedProvinceName'] : 'Semua',
             "assignedRegencyId" => isset($input['assignedRegencyId']) ? $input['assignedRegencyId'] : '',
-            "assignedRegencyName" => isset($input['assignedRegencyName']) ? $input['assignedRegencyName'] : 'Semua'
+            "assignedRegencyName" => isset($input['assignedRegencyName']) ? $input['assignedRegencyName'] : 'Semua',
+            "assignedMediaTypes" => (isset($input['assignedMediaTypes']) && is_array($input['assignedMediaTypes'])) ? $input['assignedMediaTypes'] : []
         ];
 
         $users[] = $newUser;
@@ -284,6 +285,9 @@ if ($route === 'media-types' && $method === 'GET') {
     if (isset($input['assignedProvinceName'])) $users[$index]['assignedProvinceName'] = $input['assignedProvinceName'];
     if (isset($input['assignedRegencyId'])) $users[$index]['assignedRegencyId'] = $input['assignedRegencyId'];
     if (isset($input['assignedRegencyName'])) $users[$index]['assignedRegencyName'] = $input['assignedRegencyName'];
+    if (isset($input['assignedMediaTypes']) && is_array($input['assignedMediaTypes'])) {
+        $users[$index]['assignedMediaTypes'] = $input['assignedMediaTypes'];
+    }
 
     writeJSON($usersPath, $users);
     $updatedUser = $users[$index];
@@ -482,21 +486,110 @@ if ($route === 'media-types' && $method === 'GET') {
             'condition', 'installationDate', 'expiryDate', 
             'latitude', 'longitude', 'notes', 'province', 'regency', 'district', 'village',
             'width', 'height', 'unit',
-            'quantity', 'hasSecondMedia', 'mediaType2', 'width2', 'height2', 'quantity2'
+            'quantity', 'hasSecondMedia', 'mediaType2', 'width2', 'height2', 'quantity2', 'conditionModifiedAt', 'conditionPhotoUrl'
         ];
 
+        $conditionChanged = false;
         foreach ($allowedUpdates as $field) {
             if (isset($input[$field])) {
+                $newVal = $input[$field];
                 if (in_array($field, ['latitude', 'longitude', 'width', 'height', 'width2', 'height2'])) {
-                    $promoData[$index][$field] = $input[$field] !== '' && $input[$field] !== null ? floatval($input[$field]) : null;
+                    $newVal = $newVal !== '' && $newVal !== null ? floatval($newVal) : null;
                 } elseif (in_array($field, ['quantity', 'quantity2'])) {
-                    $promoData[$index][$field] = intval($input[$field]);
+                    $newVal = intval($newVal);
                 } elseif ($field === 'hasSecondMedia') {
-                    $promoData[$index][$field] = ($input[$field] === 'true' || $input[$field] === true);
-                } else {
-                    $promoData[$index][$field] = $input[$field];
+                    $newVal = ($newVal === 'true' || $newVal === true);
                 }
+
+                if ($field === 'condition' && (!isset($promoData[$index]['condition']) || $promoData[$index]['condition'] !== $newVal)) {
+                    $conditionChanged = true;
+                }
+                $promoData[$index][$field] = $newVal;
             }
+        }
+
+        if ($conditionChanged) {
+            $promoData[$index]['conditionModifiedAt'] = date('c');
+        }
+
+        // Recompute dimensions
+        $w = isset($promoData[$index]['width']) ? $promoData[$index]['width'] : null;
+        $h = isset($promoData[$index]['height']) ? $promoData[$index]['height'] : null;
+        $u = isset($promoData[$index]['unit']) ? $promoData[$index]['unit'] : 'm';
+        $promoData[$index]['dimensions'] = ($w !== null && $h !== null) ? "{$w} x {$h} {$u}" : '-';
+
+        $w2 = isset($promoData[$index]['width2']) ? $promoData[$index]['width2'] : null;
+        $h2 = isset($promoData[$index]['height2']) ? $promoData[$index]['height2'] : null;
+        $promoData[$index]['dimensions2'] = ($w2 !== null && $h2 !== null) ? "{$w2} x {$h2} {$u}" : '-';
+
+        writeJSON($dbPath, $promoData);
+
+        echo json_encode([
+            "message" => "Data media promo berhasil diperbarui!",
+            "data" => normalizeItem($promoData[$index], $allowedMediaTypes)
+        ]);
+        exit;
+
+    } elseif ($method === 'POST') {
+         // POST /api/promo-media/:id (Update with photo upload)
+         $photoUrl = null;
+         if (isset($_FILES['photo']) && $_FILES['photo']['error'] === UPLOAD_ERR_OK) {
+             $tmpName = $_FILES['photo']['tmp_name'];
+             $origName = $_FILES['photo']['name'];
+             $ext = pathinfo($origName, PATHINFO_EXTENSION);
+             if (!$ext) $ext = 'jpg';
+             
+             $uniqueFilename = 'promo-' . time() . '-' . mt_rand(100, 999) . '.' . strtolower($ext);
+             $destPath = $uploadDir . '/' . $uniqueFilename;
+             
+             if (move_uploaded_file($tmpName, $destPath)) {
+                 $photoUrl = '/uploads/' . $uniqueFilename;
+                 
+                 $isConditionPhoto = (isset($_POST['photoField']) && $_POST['photoField'] === 'conditionPhoto') || isset($_POST['condition']);
+                 $targetField = $isConditionPhoto ? 'conditionPhotoUrl' : 'photoUrl';
+                 
+                 // Delete old file if exists
+                 $oldPhoto = isset($promoData[$index][$targetField]) ? $promoData[$index][$targetField] : '';
+                 if ($oldPhoto && strpos($oldPhoto, 'mock-') === false && strpos($oldPhoto, 'placeholder') === false) {
+                     $oldFilename = basename($oldPhoto);
+                     $oldFilePath = $uploadDir . '/' . $oldFilename;
+                     if (file_exists($oldFilePath)) {
+                         @unlink($oldFilePath);
+                     }
+                 }
+                 $promoData[$index][$targetField] = $photoUrl;
+             }
+         }
+
+         $allowedUpdates = [
+             'outletName', 'address', 'reporterName', 'mediaType', 
+             'condition', 'installationDate', 'expiryDate', 
+             'latitude', 'longitude', 'notes', 'province', 'regency', 'district', 'village',
+             'width', 'height', 'unit',
+             'quantity', 'hasSecondMedia', 'mediaType2', 'width2', 'height2', 'quantity2', 'conditionModifiedAt', 'conditionPhotoUrl'
+         ];
+
+        $conditionChanged = false;
+        foreach ($allowedUpdates as $field) {
+            if (isset($_POST[$field])) {
+                $newVal = $_POST[$field];
+                if (in_array($field, ['latitude', 'longitude', 'width', 'height', 'width2', 'height2'])) {
+                    $newVal = $newVal !== '' && $newVal !== null ? floatval($newVal) : null;
+                } elseif (in_array($field, ['quantity', 'quantity2'])) {
+                    $newVal = intval($newVal);
+                } elseif ($field === 'hasSecondMedia') {
+                    $newVal = ($newVal === 'true' || $newVal === true || $newVal === '1');
+                }
+
+                if ($field === 'condition' && (!isset($promoData[$index]['condition']) || $promoData[$index]['condition'] !== $newVal)) {
+                    $conditionChanged = true;
+                }
+                $promoData[$index][$field] = $newVal;
+            }
+        }
+
+        if ($conditionChanged) {
+            $promoData[$index]['conditionModifiedAt'] = date('c');
         }
 
         // Recompute dimensions

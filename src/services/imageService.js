@@ -15,10 +15,10 @@ export const imageService = {
     }
   },
 
-  uploadWithProgress(formData, onProgress) {
+  uploadWithProgress(formData, onProgress, url = '/api/promo-media', method = 'POST') {
     return new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
-      xhr.open('POST', '/api/promo-media');
+      xhr.open(method, url);
 
       xhr.upload.addEventListener('progress', (e) => {
         if (e.lengthComputable) {
