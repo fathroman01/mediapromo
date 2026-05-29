@@ -1,11 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { PlusCircle, Trash2, Shield, User, X, Pencil } from 'lucide-react';
 import { useApp } from '../store/AppContext';
-import { MEDIA_TYPES } from '../constants';
 import { api } from '../services/api';
 
 export default function UserManagementPage({ onBack }) {
-  const { addToast } = useApp();
+  const { mediaTypes, addToast } = useApp();
   const [usersList, setUsersList] = useState([]);
   const [showAddUserModal, setShowAddUserModal] = useState(false);
   const [newUserData, setNewUserData] = useState({
@@ -461,7 +460,7 @@ export default function UserManagementPage({ onBack }) {
 <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '1rem', marginTop: '0.5rem' }}>
   <h4 style={{ fontSize: '0.9rem', color: 'var(--text-main)', marginBottom: '0.75rem' }}>Tipe Media Promo yang Diaktifkan</h4>
   <div className="media-types-checkboxes" style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
-    {MEDIA_TYPES.map(type => (
+    {(mediaTypes || []).map(type => (
       <label key={type} className="checkbox-label" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
         <input type="checkbox" checked={selectedMediaTypes.includes(type)} onChange={() => setSelectedMediaTypes(prev => prev.includes(type) ? prev.filter(t => t !== type) : [...prev, type])} />
         {type}

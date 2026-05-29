@@ -1,7 +1,5 @@
-import { MEDIA_TYPES } from '../constants';
-
 export const normalizeMediaType = (type) => {
-  return MEDIA_TYPES.includes(type) ? type : 'Banner';
+  return type && typeof type === 'string' && type.trim() !== '' ? type.trim() : 'Banner';
 };
 
 export const normalizePromoItem = (item) => {
