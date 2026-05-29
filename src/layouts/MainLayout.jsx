@@ -201,12 +201,20 @@ export default function MainLayout() {
           </button>
 
           {currentUser?.role === 'admin' && (
-            <button 
-              className={`nav-btn ${activeTab === 'users' ? 'active' : ''}`}
-              onClick={() => setActiveTab('users')}
-            >
-              <Users size={16} /> Petugas
-            </button>
+            <>
+              <button 
+                className={`nav-btn ${activeTab === 'users' ? 'active' : ''}`}
+                onClick={() => setActiveTab('users')}
+              >
+                <Users size={16} /> Petugas
+              </button>
+              <button 
+                className="nav-btn desktop-only-btn"
+                onClick={() => setShowMediaTypeModal(true)}
+              >
+                <Layers size={16} /> Tipe Media
+              </button>
+            </>
           )}
         </div>
 
@@ -316,7 +324,7 @@ export default function MainLayout() {
                     
                     <button 
                       onClick={() => setShowMediaTypeModal(true)} 
-                      className="btn btn-secondary" 
+                      className="btn btn-secondary mobile-only-btn" 
                       style={{ 
                         width: '100%',
                         padding: '0.65rem', 

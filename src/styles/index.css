@@ -1632,6 +1632,9 @@ select.android-input option {
 .desktop-only-profile {
   display: flex !important;
 }
+.desktop-only-btn {
+  display: flex !important;
+}
 
 @media (max-width: 768px) {
   .mobile-only-btn {
@@ -1641,6 +1644,9 @@ select.android-input option {
     display: flex !important;
   }
   .desktop-only-profile {
+    display: none !important;
+  }
+  .desktop-only-btn {
     display: none !important;
   }
 }
